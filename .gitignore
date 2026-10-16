@@ -6,3 +6,4 @@ build/*.log
 marketing/check/
 tools/
 app/dist/
+unlock-worker/.wrangler/
