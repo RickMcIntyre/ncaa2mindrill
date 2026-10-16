@@ -7,3 +7,4 @@ marketing/check/
 tools/
 app/dist/
 unlock-worker/.wrangler/
+.wrangler/
