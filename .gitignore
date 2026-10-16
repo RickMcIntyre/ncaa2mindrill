@@ -4,3 +4,4 @@ __pycache__/
 site/
 build/*.log
 marketing/check/
+tools/

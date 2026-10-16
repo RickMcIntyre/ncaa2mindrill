@@ -34,6 +34,8 @@ npm run android          # opens Android Studio → Build → Generate Signed Bu
 npm run ios              # on the Mac: opens Xcode → Product → Archive
 ```
 
+Toolchain note: Capacitor's Android project uses Gradle 8.2, which needs a JDK 17–21; Android Studio's bundled JDK on this PC is 25, so a Temurin JDK 21 lives in `tools/jdk-21…` (git-ignored). Command-line builds: `source app/gradle-env.sh` first. In Android Studio: File → Settings → Build Tools → Gradle → Gradle JDK → pick the `tools/jdk-21…` folder once.
+
 Android signing: in Android Studio, Build → Generate Signed Bundle/APK → create a keystore once and **back it up** (losing it means you can never update the app). Google Play app signing will wrap it.
 
 iOS: in Xcode set the Team (your Apple Developer account) under Signing & Capabilities, add the **In-App Purchase** capability, then Archive and upload with the Organizer.
