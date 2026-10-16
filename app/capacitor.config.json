@@ -1,0 +1,12 @@
+{
+  "appId": "com.ncaa2mindrill.app",
+  "appName": "NCAA Two-Minute Drill",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "android": { "backgroundColor": "#0c1420" },
+  "ios": { "backgroundColor": "#0c1420", "contentInset": "always" },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 800, "backgroundColor": "#0c1420", "androidScaleType": "CENTER_CROP", "showSpinner": false },
+    "StatusBar": { "style": "DARK", "backgroundColor": "#0c1420" }
+  }
+}

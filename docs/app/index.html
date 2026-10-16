@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get the app · NCAA Two-Minute Drill</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@700;800&family=Barlow:wght@400;600&display=swap">
+<style>
+  :root { --night: #0c1420; --panel: #132031; --line: #2a3d57; --chalk: #eef2f6; --muted: #8ea0b8; --amber: #f3b23c; }
+  body { font-family: "Barlow", "Segoe UI", system-ui, sans-serif; background: var(--night); color: var(--chalk); margin: 0; padding: 32px 16px 60px; }
+  main { max-width: 560px; margin: 0 auto; text-align: center; display: grid; gap: 18px; }
+  .eyebrow { font-family: "Saira Condensed", sans-serif; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); font-size: 13px; }
+  h1 { font-family: "Saira Condensed", sans-serif; font-weight: 800; text-transform: uppercase; font-size: clamp(44px, 11vw, 80px); line-height: .92; margin: 0; }
+  h1 span { color: var(--amber); display: block; font-size: .5em; letter-spacing: .08em; }
+  p { font-size: 17px; margin: 0; }
+  .modes { display: grid; gap: 10px; text-align: left; }
+  .mode { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .mode b { font-family: "Saira Condensed", sans-serif; font-size: 20px; letter-spacing: .04em; text-transform: uppercase; display: block; }
+  .mode.saban b { color: #d9433a; } .mode.cig b { color: #e0b43a; }
+  .badges { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .badge { display: inline-block; background: var(--chalk); color: var(--night); font-family: "Saira Condensed", sans-serif; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 12px 18px; border-radius: 8px; text-decoration: none; opacity: .5; pointer-events: none; }
+  .badge.live { opacity: 1; pointer-events: auto; }
+  .fine { color: var(--muted); font-size: 13px; }
+  a { color: var(--amber); }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">NCAA Two-Minute Drill</div>
+  <h1>The hard modes<span>in the app</span></h1>
+  <p>The website stays free: a real drive a day, practice, and the coaches table. The app adds the two hard modes for one $0.99 unlock.</p>
+  <div class="modes">
+    <div class="mode saban"><b>Saban mode</b>10% to win or worse, or two scores down. The 28–3 drives. A new one every day.</div>
+    <div class="mode cig"><b>Cignetti mode</b>10–25% to win. Hard, not hopeless. Google yourself afterward.</div>
+  </div>
+  <div class="badges">
+    <a class="badge" id="ios" href="#">App Store · coming soon</a>
+    <a class="badge" id="android" href="#">Google Play · coming soon</a>
+  </div>
+  <p class="fine">Links go live when the app is approved. <a href="/">Back to the game</a> · <a href="/privacy.html">Privacy</a></p>
+</main>
+</body>
+</html>

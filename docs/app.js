@@ -437,8 +437,34 @@ const pick = (list, i) => list[((i % list.length) + list.length) % list.length];
 function dailyScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.std, i) }; }
 // Saban mode: the drives almost nobody wins. Its daily order is its own, offset so it never shares a game with the regular daily.
 function sabanScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.hard, i * 7 + 3) }; }
-const HARD_WP = 0.10;
+const HARD_WP = 0.10, CIG_WP = 0.25;
 const isHard = s => s.wp0 <= HARD_WP || s.os - s.ds <= -9;
+// Cignetti mode: one shelf up from Saban. One score down, 10-25% to win. Hard, not hopeless.
+const isCig = s => s.os - s.ds >= -8 && s.wp0 > HARD_WP && s.wp0 <= CIG_WP;
+function cignettiScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.cig, i * 5 + 1) }; }
+const HARD_MODES = {
+  saban:    { label: 'Saban mode', tag: 'SABAN MODE', eyebrow: 'Saban mode', btn: 'Nobody wins this one', cls: 'saban', fine: `Saban mode drives start at ${Math.round(HARD_WP * 100)}% win chance or worse, or two scores down.`, pitch: (sc, two) => `Starting win chance: <b>${pct(sc.wp0)}</b>.${two ? ' Two scores down: you need a touchdown, the onside kick, and then some.' : ''}<br>${esc(sc.coach)} didn't pull it off. Can you?` },
+  cignetti: { label: 'Cignetti mode', tag: 'CIGNETTI MODE', eyebrow: 'Cignetti mode', btn: 'Google me', cls: 'cignetti', fine: `Cignetti mode drives start between ${Math.round(HARD_WP * 100)}% and ${Math.round(CIG_WP * 100)}% win chance. Hard, not hopeless.`, pitch: sc => `Starting win chance: <b>${pct(sc.wp0)}</b>. Hard, not hopeless. The kind of drive that gets a coach a statue or a buyout.<br>${esc(sc.coach)} ${sc.won ? 'got it done' : "didn't"}. Your turn.` },
+};
+const isHardMode = m => m === 'saban' || m === 'cignetti';
+// The hard modes are the paid part of the app. On the web they stay open until the app ships (flip WEB_UNLOCKED).
+const WEB_UNLOCKED = true;
+function premiumUnlocked() {
+  if (window.Native && window.Native.isNative) return !!window.Native.entitled;
+  return WEB_UNLOCKED;
+}
+function renderPaywall(mode) {
+  const m = HARD_MODES[mode], native = window.Native && window.Native.isNative;
+  app.innerHTML = `<section class="intro paywall">
+    <div class="eyebrow">${esc(m.eyebrow)} · locked</div>
+    <h2 class="headline" style="font-size:clamp(40px,10vw,72px)">The hard<small>modes</small></h2>
+    <div class="pitch"><b>Saban mode</b>: 10% to win or worse, or two scores down. The 28–3 drives.<br><b>Cignetti mode</b>: 10–25% to win. Hard, not hopeless.<br>One unlock, both modes, a new drive of each every day.</div>
+    ${native ? `<button class="cta" id="buyBtn">Unlock both · ${esc(window.Native.price || '$0.99')}</button><button class="cta ghost" id="restoreBtn">Restore purchase</button><div class="fine" id="buyNote"></div>`
+      : `<div class="fine">Saban and Cignetti mode live in the NCAA Two-Minute Drill app. One $0.99 unlock, both modes.</div><div class="row"><a class="cta" href="https://ncaa2mindrill.com/app" rel="noopener">Get the app</a></div>`}
+  </section>`;
+  const b = $('#buyBtn'); if (b) b.onclick = async () => { b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { toast('Unlocked. Go win.'); setTab(mode); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
+  const r = $('#restoreBtn'); if (r) r.onclick = async () => { $('#buyNote').textContent = 'Checking…'; try { const ok = await window.Native.restore(); $('#buyNote').textContent = ok ? 'Restored.' : 'No previous purchase found for this account.'; if (ok) setTab(mode); } catch (e) { $('#buyNote').textContent = 'Restore failed: ' + (e && e.message || e); } };
+}
 
 // ---------- game state ----------
 let G = null; // current game
@@ -555,20 +581,22 @@ function lineupHTML(sc) {
 let tab = 'daily';
 function setTab(t) {
   tab = t;
-  for (const [id, k] of [['tabDaily', 'daily'], ['tabSaban', 'saban'], ['tabPractice', 'practice'], ['tabCoaches', 'coaches']]) $('#' + id).setAttribute('aria-pressed', String(k === t));
+  for (const [id, k] of [['tabDaily', 'daily'], ['tabSaban', 'saban'], ['tabCignetti', 'cignetti'], ['tabPractice', 'practice'], ['tabCoaches', 'coaches']]) $('#' + id).setAttribute('aria-pressed', String(k === t));
   document.documentElement.classList.toggle('saban', t === 'saban');
+  document.documentElement.classList.toggle('cignetti', t === 'cignetti');
   if (t === 'daily') showDaily('daily');
-  else if (t === 'saban') showDaily('saban');
+  else if (t === 'saban' || t === 'cignetti') showDaily(t);
   else if (t === 'practice') showPractice();
   else showCoaches();
   window.scrollTo(0, 0);
 }
 
 function showDaily(mode) {
-  const { no, sc } = mode === 'saban' ? sabanScenario() : dailyScenario();
+  const { no, sc } = mode === 'saban' ? sabanScenario() : mode === 'cignetti' ? cignettiScenario() : dailyScenario();
   const prev = (store[mode] ||= {})[no];
   const date = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  $('#subline').textContent = mode === 'saban' ? `Saban mode · No. ${no} · ${date}` : `No. ${no} · ${date}`;
+  $('#subline').textContent = isHardMode(mode) ? `${HARD_MODES[mode].label} · No. ${no} · ${date}` : `No. ${no} · ${date}`;
+  if (isHardMode(mode) && !premiumUnlocked()) { renderPaywall(mode); return; }
   if (prev && prev.done) { newGame(sc, mode, no); G.done = prev.done; G.grades = prev.grades || []; G.log = prev.log || []; G.snaps = prev.snaps || []; renderFinal(); return; }
   showIntro(sc, mode, no);
 }
@@ -577,11 +605,11 @@ function showIntro(sc, mode, no) {
   const off = T_(sc.off), def = T_(sc.dfn), gl = gameLabel(sc);
   const st = { s: sc.os - sc.ds };
   if (mode === 'practice') $('#subline').textContent = `Practice · ${gl.when}`;
-  const hard = isHard(sc), saban = mode === 'saban';
-  const eyebrow = saban ? 'Saban mode' : mode === 'daily' ? "Today's drive" : hard ? 'Practice · Saban-hard drive' : 'Practice drive';
+  const hard = isHard(sc), hm = isHardMode(mode) ? HARD_MODES[mode] : null, saban = !!hm;
+  const eyebrow = hm ? hm.eyebrow : mode === 'daily' ? "Today's drive" : hard ? 'Practice · Saban-hard drive' : isCig(sc) ? 'Practice · Cignetti-hard drive' : 'Practice drive';
   const twoScore = sc.os - sc.ds <= -9;
-  const pitch = saban
-    ? `Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}, calling it for <b>${esc(off.school)}</b>. Starting win chance: <b>${pct(sc.wp0)}</b>.${twoScore ? ' Two scores down: you need a touchdown, the onside kick, and then some.' : ''}<br>${esc(sc.coach)} didn't pull it off. Can you?`
+  const pitch = hm
+    ? `Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}, calling it for <b>${esc(off.school)}</b>. ${hm.pitch(sc, twoScore)}`
     : `Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}. You're calling it for <b>${esc(off.school)}</b>.<br>Can you do better than <b>${esc(sc.coach)}</b> did?`;
   app.innerHTML = `<section class="intro">
     <div class="eyebrow">${eyebrow} · ${esc(gl.when)}</div>
@@ -589,8 +617,8 @@ function showIntro(sc, mode, no) {
     <h2 class="headline">${headline(sc)}<small>${clock(sc.secs)} left in the game</small></h2>
     ${bug({ ...st, os: sc.os, ds: sc.ds, T: sc.secs, to: sc.to, dto: sc.dto }, sc)}
     <div class="pitch">${pitch}</div>
-    <button class="cta" id="go">${saban ? 'Nobody wins this one' : 'Take the field'}</button>
-    <div class="fine">Real score, clock, ball, timeouts and skill players from that game. ${esc(def.school)} coached by ${esc(sc.dcoach)}.${saban ? ` Saban mode drives start at ${pct(HARD_WP)} win chance or worse, or two scores down.` : ''}</div>
+    <button class="cta" id="go">${hm ? hm.btn : 'Take the field'}</button>
+    <div class="fine">Real score, clock, ball, timeouts and skill players from that game. ${esc(def.school)} coached by ${esc(sc.dcoach)}.${hm ? ' ' + hm.fine : ''}</div>
   </section>`;
   $('#go').onclick = () => { newGame(sc, mode, no); renderPlay(); };
 }
@@ -925,7 +953,7 @@ function conclude(end, n, msg) {
   else { wp = oppBall(n, n.s, n.T, end.oppYtg); desc = `${end.why}. ${T_(G.sc.dfn).school} takes over with ${clock(n.T)} left.`; }
   const scored = n.os - G.sc.os;
   G.done = { wp, desc, os: n.os, ds: n.ds, T: n.T, scored, snaps: n.snaps };
-  if (G.mode === 'daily' || G.mode === 'saban') { (store[G.mode] ||= {})[G.no] = { done: G.done, grades: G.grades, log: G.log, snaps: G.snaps, coachWp: G.sc.cwp, sid: G.sc.id }; }
+  if (G.mode === 'daily' || isHardMode(G.mode)) { (store[G.mode] ||= {})[G.no] = { done: G.done, grades: G.grades, log: G.log, snaps: G.snaps, coachWp: G.sc.cwp, sid: G.sc.id }; }
   else { store.practice[G.sc.id] = { wp, coachWp: G.sc.cwp }; }
   saveStore();
   renderFinal();
@@ -1035,22 +1063,22 @@ function comparison(sc) {
   return { summary, rows, turn };
 }
 function shareText() {
-  const sc = G.sc, d = G.done, gl = gameLabel(sc), saban = G.mode === 'saban';
+  const sc = G.sc, d = G.done, gl = gameLabel(sc), saban = isHardMode(G.mode);
   const verdict = d.wp - sc.cwp > 0.02 ? `I beat ${sc.coach}` : Math.abs(d.wp - sc.cwp) <= 0.02 ? `Dead even with ${sc.coach}` : `${sc.coach} got me`;
-  return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}\nNCAA Two-Minute Drill${saban ? ' · SABAN MODE' : ''}${G.no ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}\n${G.grades.join('')}\nncaa2mindrill.com`;
+  return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}\n${G.grades.join('')}\nncaa2mindrill.com`;
 }
 // 1200x630 share card (the size X, Facebook and iMessage previews use)
 function drawShareCard(cv) {
-  const sc = G.sc, d = G.done, gl = gameLabel(sc), off = T_(sc.off), def = T_(sc.dfn), saban = G.mode === 'saban';
+  const sc = G.sc, d = G.done, gl = gameLabel(sc), off = T_(sc.off), def = T_(sc.dfn), saban = G.mode === 'saban', cig = G.mode === 'cignetti';
   const c = cv.getContext('2d'), W = cv.width, H = cv.height;
-  c.fillStyle = saban ? '#160c0c' : '#0c1420'; c.fillRect(0, 0, W, H);
+  c.fillStyle = saban ? '#160c0c' : cig ? '#14120a' : '#0c1420'; c.fillRect(0, 0, W, H);
   // turf stripe and team color rails
   c.fillStyle = '#2f6b3a'; c.fillRect(0, H - 70, W, 70);
   c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 2; for (let x = 60; x < W; x += 100) { c.beginPath(); c.moveTo(x, H - 70); c.lineTo(x, H); c.stroke(); }
   c.fillStyle = off.color; c.fillRect(0, 0, 18, H - 70); c.fillStyle = def.color; c.fillRect(W - 18, 0, 18, H - 70);
-  const accent = saban ? '#d9433a' : '#f3b23c';
+  const accent = saban ? '#d9433a' : cig ? '#e0b43a' : '#f3b23c';
   c.textBaseline = 'alphabetic'; c.fillStyle = accent; c.font = '700 26px "Saira Condensed", "Arial Narrow", sans-serif';
-  c.fillText((saban ? 'SABAN MODE · ' : 'NCAA TWO-MINUTE DRILL · ') + (G.no ? `NO. ${G.no}` : 'PRACTICE'), 60, 70);
+  c.fillText((saban ? 'SABAN MODE · ' : cig ? 'CIGNETTI MODE · ' : 'NCAA TWO-MINUTE DRILL · ') + (G.no ? `NO. ${G.no}` : 'PRACTICE'), 60, 70);
   c.fillStyle = '#8ea0b8'; c.font = '600 24px "Saira Condensed", "Arial Narrow", sans-serif';
   c.fillText(`${gl.title.toUpperCase()} · ${gl.when.toUpperCase()}`, 60, 106);
   const verdict = d.wp - sc.cwp > 0.02 ? `I BEAT ${sc.coach.toUpperCase()}` : Math.abs(d.wp - sc.cwp) <= 0.02 ? `DEAD EVEN WITH ${sc.coach.toUpperCase()}` : `${sc.coach.toUpperCase()} GOT ME`;
@@ -1090,8 +1118,8 @@ function renderFinal() {
   const vi = (G.no || sc.id) % vpool.length; // stable for the day, varied across days
   const verdict = vpool[vi].replace('{c}', sc.coach).replace(/\.$/, '');
   const you = d.wp >= sc.cwp;
-  const saban = G.mode === 'saban';
-  const sabanLine = saban ? `<div class="eyebrow" style="text-align:center;color:var(--amber)">${d.wp >= 0.5 ? 'You pulled it off. Saban would nod.' : d.wp > sc.wp0 ? `You raised a ${pct(sc.wp0)} shot to ${pct(d.wp)}.` : `A ${pct(sc.wp0)} shot stayed a long shot.`}</div>` : '';
+  const saban = isHardMode(G.mode);
+  const sabanLine = saban ? `<div class="eyebrow" style="text-align:center;color:var(--amber)">${d.wp >= 0.5 ? (G.mode === 'saban' ? 'You pulled it off. Saban would nod, once.' : 'You pulled it off. Google yourself.') : d.wp > sc.wp0 ? `You raised a ${pct(sc.wp0)} shot to ${pct(d.wp)}.` : `A ${pct(sc.wp0)} shot stayed a long shot.`}</div>` : '';
   const real = sc.real.map(p => `<li><span>${p.d ? `${ord(p.d)}&${p.dist}` : '—'} ${p.s != null ? clock(p.s) : ''}</span>${esc(p.t)}</li>`).join('');
   const cmp = comparison(sc);
   const shareTxt = shareText();
@@ -1163,7 +1191,7 @@ function renderFinal() {
   };
   const dl = $('#shareDl'); dl.onclick = () => { dl.href = $('#shareCanvas').toDataURL('image/png'); };
   const ag = $('#again'); if (ag) ag.onclick = () => { newGame(sc, G.mode, G.no); renderPlay(); };
-  $('#more').onclick = () => { if (saban || isHard(sc)) pf = { q: '', year: '', kind: 'saban' }; setTab('practice'); };
+  $('#more').onclick = () => { if (G.mode === 'saban' || isHard(sc)) pf = { q: '', year: '', kind: 'saban' }; else if (G.mode === 'cignetti' || isCig(sc)) pf = { q: '', year: '', kind: 'cignetti' }; setTab('practice'); };
 }
 
 // ---------- practice ----------
@@ -1174,7 +1202,7 @@ function showPractice() {
   app.innerHTML = `<div class="filters">
       <input id="pq" type="search" placeholder="Search a coach or school" value="${esc(pf.q)}" aria-label="Search a coach or school">
       <select id="py" aria-label="Season"><option value="">All seasons</option>${years}</select>
-      <select id="pk" aria-label="Situation"><option value="">Any situation</option><option value="tied" ${pf.kind === 'tied' ? 'selected' : ''}>Tied</option><option value="fg" ${pf.kind === 'fg' ? 'selected' : ''}>Down 1–3</option><option value="td" ${pf.kind === 'td' ? 'selected' : ''}>Down 4–8</option><option value="two" ${pf.kind === 'two' ? 'selected' : ''}>Down 9+ (two scores)</option><option value="saban" ${pf.kind === 'saban' ? 'selected' : ''}>Saban-hard (≤${Math.round(HARD_WP * 100)}% to start)</option></select>
+      <select id="pk" aria-label="Situation"><option value="">Any situation</option><option value="tied" ${pf.kind === 'tied' ? 'selected' : ''}>Tied</option><option value="fg" ${pf.kind === 'fg' ? 'selected' : ''}>Down 1–3</option><option value="td" ${pf.kind === 'td' ? 'selected' : ''}>Down 4–8</option><option value="two" ${pf.kind === 'two' ? 'selected' : ''}>Down 9+ (two scores)</option><option value="saban" ${pf.kind === 'saban' ? 'selected' : ''}>Saban-hard (≤${Math.round(HARD_WP * 100)}% to start)</option><option value="cignetti" ${pf.kind === 'cignetti' ? 'selected' : ''}>Cignetti-hard (${Math.round(HARD_WP * 100)}–${Math.round(CIG_WP * 100)}% to start)</option></select>
       <button class="cta ghost" id="rnd" style="flex:0 0 auto;width:auto">Random drive</button>
     </div><div id="plist"></div>`;
   const draw = () => {
@@ -1187,6 +1215,7 @@ function showPractice() {
       if (pf.kind === 'td' && !(d >= 4 && d <= 8)) return false;
       if (pf.kind === 'two' && !(d >= 9)) return false;
       if (pf.kind === 'saban' && !isHard(s)) return false;
+      if (pf.kind === 'cignetti' && !isCig(s)) return false;
       if (!pf.kind && d >= 9) return false;
       if (!q) return true;
       return (s.coach + ' ' + s.dcoach + ' ' + T_(s.off).school + ' ' + T_(s.dfn).school).toLowerCase().includes(q);
@@ -1237,10 +1266,10 @@ function showStats() {
   let streak = 0, today = todayIndex() + 1;
   for (let i = today; store.daily[i]?.done; i--) streak++;
   const avg = days.length ? days.reduce((a, [, v]) => a + (v.done.wp - v.coachWp), 0) / days.length : 0;
-  const sab = Object.values(store.saban || {}).filter(v => v.done);
-  const sabWon = sab.filter(v => v.done.wp >= 0.5).length;
+  const sab = Object.values(store.saban || {}).filter(v => v.done), cig = Object.values(store.cignetti || {}).filter(v => v.done);
+  const sabWon = sab.filter(v => v.done.wp >= 0.5).length, cigWon = cig.filter(v => v.done.wp >= 0.5).length;
   $('#statsBody').innerHTML = `<div><b>${days.length}</b><span>Played</span></div><div><b>${beat}</b><span>Beat the coach</span></div><div><b>${streak}</b><span>Day streak</span></div><div><b>${days.length ? (avg >= 0 ? '+' : '') + Math.round(avg * 100) : '–'}</b><span>Avg vs coach</span></div>` +
-    `<div><b>${sab.length}</b><span>Saban drives</span></div><div><b>${sabWon}</b><span>Saban wins (50%+)</span></div><div><b>${sab.filter(v => v.done.wp >= v.coachWp).length}</b><span>Saban: beat coach</span></div><div><b>${sab.length ? pct(Math.max(...sab.map(v => v.done.wp))) : '–'}</b><span>Best Saban finish</span></div>`;
+    `<div><b>${sab.length}</b><span>Saban drives</span></div><div><b>${sabWon}</b><span>Saban wins (50%+)</span></div><div><b>${cig.length}</b><span>Cignetti drives</span></div><div><b>${cigWon}</b><span>Cignetti wins (50%+)</span></div>`;
   $('#statsNote').textContent = days.length ? 'Saved in this browser only.' : 'Finish today\'s drive to start your record. Saved in this browser only.';
   $('#statsDlg').showModal();
 }
@@ -1248,6 +1277,7 @@ function showStats() {
 // ---------- boot ----------
 $('#tabDaily').onclick = () => setTab('daily');
 $('#tabSaban').onclick = () => setTab('saban');
+$('#tabCignetti').onclick = () => setTab('cignetti');
 $('#tabPractice').onclick = () => setTab('practice');
 $('#tabCoaches').onclick = () => setTab('coaches');
 $('#helpBtn').onclick = () => $('#helpDlg').showModal();
@@ -1264,6 +1294,8 @@ fetch('data.json').then(r => r.json()).then(d => {
   for (const s of D.scen) s.wp0 = wpModel(s.os - s.ds, s.secs, s.ytg, s.down, s.dist, s.to, s.dto, s.elo);
   D.std = D.scen.filter(s => s.os - s.ds >= -8);           // the regular daily pool, in its fixed order
   D.hard = D.scen.filter(isHard).sort((a, b) => a.id - b.id);
+  D.cig = D.scen.filter(isCig).sort((a, b) => a.id - b.id);
+  if (window.Native && window.Native.init) window.Native.init().then(() => { if (isHardMode(tab)) setTab(tab); }).catch(() => {});
   let seen = false; try { seen = localStorage.getItem('cfb2md:seen') === '1'; localStorage.setItem('cfb2md:seen', '1'); } catch { seen = true; }
   setTab('daily');
   if (!seen) $('#helpDlg').showModal();
