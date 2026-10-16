@@ -2,7 +2,7 @@
 import json, os, re, sys, time, urllib.request, urllib.parse
 import pandas as pd
 RAW = 'C:/Users/pmcin/cfb-2min-drill/raw/'
-D = json.load(open('C:/Users/pmcin/cfb-2min-drill/site/data.json', encoding='utf-8'))
+D = json.load(open('C:/Users/pmcin/cfb-2min-drill/docs/data.json', encoding='utf-8'))
 tm = pd.read_csv(RAW + 'teams_2025.csv').set_index('team_id')
 FIX = {'App State Mountaineers': 'Appalachian State Mountaineers', 'UConn Huskies': 'UConn Huskies',
        'Hawai\'i Rainbow Warriors': 'Hawaii Rainbow Warriors', 'San José State Spartans': 'San Jose State Spartans',

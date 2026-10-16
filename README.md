@@ -4,8 +4,8 @@ A college-football version of nfl2mindrill.com: one real late-game FBS drive a d
 
 ## Layout
 
-- `site/` — the static site, ready to upload as-is. `index.html` is the page, `app.js` is the engine/UI, `data.json` is generated. Bump `app.js?v=` in index.html when you change app.js so browsers refetch it.
-- `build/build.py` — turns the raw play-by-play into `site/data.json` (scenarios, pools of real snaps, win-probability and field-goal models, team ratings, lineups).
+- `docs/` — the static site, ready to upload as-is. `index.html` is the page, `app.js` is the engine/UI, `data.json` is generated. Bump `app.js?v=` in index.html when you change app.js so browsers refetch it.
+- `build/build.py` — turns the raw play-by-play into `docs/data.json` (scenarios, pools of real snaps, win-probability and field-goal models, team ratings, lineups).
 - `build/wiki_coaches.py` — caches each team-season's Wikipedia infobox in `raw/wiki/` so interim head coaches get credited game by game.
 - `raw/` — downloaded inputs (not needed to run the site).
 
@@ -23,10 +23,10 @@ Inputs come from SportsDataverse GitHub releases (`cfbfastR_cfb_pbp`, `espn_cfb_
 ## Run locally
 
 ```bash
-python -m http.server 8765 --directory site
+python -m http.server 8765 --directory docs
 ```
 
-Then open http://localhost:8765/. To deploy, upload the contents of `site/` (index.html, app.js, data.json) to the ncaa2mindrill.com host.
+Then open http://localhost:8765/. To deploy, upload the contents of `docs/` (index.html, app.js, data.json) to the ncaa2mindrill.com host.
 
 ## How the game works
 

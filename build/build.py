@@ -8,7 +8,7 @@ import pandas as pd
 from load import load
 
 RAW = 'C:/Users/pmcin/cfb-2min-drill/raw/'
-OUT = 'C:/Users/pmcin/cfb-2min-drill/site/data.json'
+OUT = 'C:/Users/pmcin/cfb-2min-drill/docs/data.json'
 YEARS = (2023, 2024, 2025)
 rng = random.Random(7)
 
