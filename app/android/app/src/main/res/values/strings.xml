@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NCAA Two-Minute Drill</string>
+    <string name="title_activity_main">NCAA Two-Minute Drill</string>
+    <string name="package_name">com.ncaa2mindrill.app</string>
+    <string name="custom_url_scheme">com.ncaa2mindrill.app</string>
+</resources>
