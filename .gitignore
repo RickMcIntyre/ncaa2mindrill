@@ -5,3 +5,4 @@ site/
 build/*.log
 marketing/check/
 tools/
+app/dist/

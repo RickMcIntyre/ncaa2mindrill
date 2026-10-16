@@ -40,6 +40,10 @@ Android signing: in Android Studio, Build → Generate Signed Bundle/APK → cre
 
 iOS: in Xcode set the Team (your Apple Developer account) under Signing & Capabilities, add the **In-App Purchase** capability, then Archive and upload with the Organizer.
 
+### Try it on an Android phone now
+
+A debug build is produced by `source app/gradle-env.sh && cd app/android && ./gradlew assembleDebug`; it lands in `app/android/app/build/outputs/apk/debug/app-debug.apk` (a copy goes to `app/dist/`). Copy it to the phone, allow "install unknown apps" for your file manager, and install. The store purchase won't work in a debug build until the RevenueCat keys are in `docs/native.js` and the product exists, but everything else is the real app.
+
 ## 4. Store listings (you)
 
 - Name: NCAA Two-Minute Drill. Subtitle: "Call a real college drive. Beat the coach."
