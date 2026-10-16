@@ -97,16 +97,19 @@ export default {
         return json({ ok: true, code: await makeCode(env, 'gift' + gift.replace(/[^A-Z2-9]/g, '')) });
       }
       // ---- traffic tally (D1). One row per browser per day, counted up; nothing personal is stored.
+      // src is where the browser first came from (utm_source/utm_campaign, or "direct"), so paid campaigns can be judged
       if (url.pathname === '/hit' && env.DB) {
         const token = (url.searchParams.get('token') || '').slice(0, 40), day = new Date().toISOString().slice(0, 10);
+        const src = (url.searchParams.get('src') || 'direct').replace(/[^\w./-]/g, '').slice(0, 48) || 'direct';
         if (token.length < 8) return json({ ok: false }, 400);
-        await env.DB.prepare('INSERT INTO hits (day, token, n, ts) VALUES (?1, ?2, 1, ?3) ON CONFLICT(day, token) DO UPDATE SET n = n + 1, ts = ?3').bind(day, token, Date.now()).run();
+        await env.DB.prepare('INSERT INTO hits (day, token, n, ts, src) VALUES (?1, ?2, 1, ?3, ?4) ON CONFLICT(day, token) DO UPDATE SET n = n + 1, ts = ?3').bind(day, token, Date.now(), src).run();
         return json({ ok: true });
       }
       if (url.pathname === '/unlocked' && env.DB) {
         const code = (url.searchParams.get('code') || '').slice(0, 80), src = (url.searchParams.get('src') || 'web').slice(0, 12);
+        const from = (url.searchParams.get('from') || 'direct').replace(/[^\w./-]/g, '').slice(0, 48) || 'direct';
         if (code.length < 8) return json({ ok: false }, 400);
-        await env.DB.prepare('INSERT OR IGNORE INTO unlocks (code, src, ts) VALUES (?1, ?2, ?3)').bind(code, src, Date.now()).run();
+        await env.DB.prepare('INSERT OR IGNORE INTO unlocks (code, src, ts, from_src) VALUES (?1, ?2, ?3, ?4)').bind(code, src, Date.now(), from).run();
         return json({ ok: true });
       }
       if (url.pathname === '/stats' && env.DB) {
@@ -120,12 +123,16 @@ export default {
         const byDay = await env.DB.prepare('SELECT day, SUM(n) AS v, COUNT(*) AS u FROM hits WHERE day >= ?1 GROUP BY day ORDER BY day').bind(new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10)).all();
         const unlocks = { today: (await q('SELECT COUNT(*) AS c FROM unlocks WHERE ts >= ?1', Date.parse(today))).c || 0, all: (await q('SELECT COUNT(*) AS c FROM unlocks')).c || 0 };
         const plays = { today: (await q('SELECT COUNT(*) AS c FROM results WHERE ts >= ?1', Date.parse(today))).c || 0, all: (await q('SELECT COUNT(*) AS c FROM results')).c || 0 };
+        // where the last 30 days of visitors came from, and which sources turned into unlocks
+        const month = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+        const bySrc = await env.DB.prepare("SELECT COALESCE(src, 'direct') AS src, SUM(n) AS v, COUNT(DISTINCT token) AS u FROM hits WHERE day >= ?1 GROUP BY 1 ORDER BY v DESC LIMIT 25").bind(month).all();
+        const unlocksBySrc = await env.DB.prepare("SELECT COALESCE(from_src, 'direct') AS src, COUNT(*) AS c FROM unlocks GROUP BY 1").all();
         let stripe_paid = null, stripe_error = null;
         try { // confirmed payments straight from Stripe, when the restricted key is present
           const s = await stripe(env, '/checkout/sessions?limit=100&status=complete');
           stripe_paid = (s.data || []).filter(x => x.payment_status === 'paid').length; if (s.has_more) stripe_paid = stripe_paid + '+';
         } catch (e) { stripe_error = String(e && e.message || e); }
-        return json({ ok: true, today, visits, byDay: (byDay && byDay.results) || [], unlocks, plays, stripe_paid, stripe_error });
+        return json({ ok: true, today, visits, byDay: (byDay && byDay.results) || [], unlocks, plays, stripe_paid, stripe_error, bySrc: (bySrc && bySrc.results) || [], unlocksBySrc: (unlocksBySrc && unlocksBySrc.results) || [] });
       }
       // ---- daily leaderboard (D1). One row per finished daily drive; the site submits anonymously with a per-browser token.
       if (url.pathname === '/lb/submit' && env.DB) {

@@ -357,10 +357,30 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
   <button class="cta ghost" id="statsClose">Close</button>
 </dialog>
 
+<script>
+// Ad-platform tags. Paste the ids once the ad accounts exist; nothing loads while they are blank.
+// gtag: the Google Ads tag ("AW-123456789") or a GA4 id ("G-XXXXXXX"); meta: the Meta Pixel id; x: the X Pixel id;
+// xEvents: the X event ids for a purchase and a lead (X needs one per event).
+window.ADS = { gtag: '', meta: '', x: '', xEvents: { purchase: '', lead: '' } };
+(function (A) {
+  if (A.gtag) {
+    const s = document.createElement('script'); s.async = true; s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(A.gtag); document.head.appendChild(s);
+    window.dataLayer = window.dataLayer || []; window.gtag = function () { window.dataLayer.push(arguments); }; window.gtag('js', new Date()); window.gtag('config', A.gtag);
+  }
+  if (A.meta) {
+    !function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); }; if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = '2.0'; n.queue = []; t = b.createElement(e); t.async = !0; t.src = v; s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s); }(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+    window.fbq('init', A.meta); window.fbq('track', 'PageView');
+  }
+  if (A.x) {
+    !function (e, t, n, s, u, a) { e.twq || (s = e.twq = function () { s.exe ? s.exe.apply(s, arguments) : s.queue.push(arguments); }, s.version = '1.1', s.queue = [], u = t.createElement(n), u.async = !0, u.src = 'https://static.ads-twitter.com/uwt.js', a = t.getElementsByTagName(n)[0], a.parentNode.insertBefore(u, a)); }(window, document, 'script');
+    window.twq('config', A.x);
+  }
+})(window.ADS);
+</script>
 <script src="native.js?v=2"></script>
 <script src="sound.js?v=1"></script>
 <script src="anim.js?v=10"></script>
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 
 </body>
 </html>

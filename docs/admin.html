@@ -25,6 +25,11 @@
   .bars i { flex: 1; background: var(--amber); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; }
   .bars i:hover::after { content: attr(data-t); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: var(--night); border: 1px solid var(--line); padding: 2px 6px; font-size: 12px; white-space: nowrap; border-radius: 4px; }
   .foot { color: var(--muted); font-size: 13px; }
+  table.src { width: 100%; border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  table.src th, table.src td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  table.src th { font-family: "Saira Condensed", sans-serif; letter-spacing: .1em; text-transform: uppercase; font-size: 12px; color: var(--muted); }
+  table.src td.n { text-align: right; } table.src th.n { text-align: right; }
+  code { background: var(--night); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
   .err { color: var(--bad); }
   a { color: var(--amber); }
 </style>
@@ -34,6 +39,7 @@
   <div><h1>Tally</h1><div class="sub" id="sub">Loading…</div></div>
   <div class="grid" id="tiles"></div>
   <div class="chart"><div class="tile" style="padding:0;border:0;background:none"><div class="k">Visits, last 30 days</div></div><div class="bars" id="bars"></div></div>
+  <div class="chart"><div class="tile" style="padding:0;border:0;background:none"><div class="k">Where they came from, last 30 days</div></div><table class="src" id="src"></table><div class="foot" style="margin-top:8px">Sources come from <code>utm_source</code> / <code>utm_campaign</code> on the link (or <code>?s=</code>), first touch per browser. Unlocks are credited to the source the browser first arrived from. Links for ads: <code>https://ncaa2mindrill.com/?utm_source=x&amp;utm_campaign=launch</code>.</div></div>
   <div class="foot">Visits are page loads; "people" is distinct browsers (a random token, nothing personal). Unlocks are what browsers reported after a Stripe return; "Stripe-confirmed" comes straight from Stripe once the worker has the key. Refreshes every minute. <a href="/">Back to the game</a></div>
 </main>
 <script>
@@ -56,6 +62,9 @@
       const days = []; for (let i = 29; i >= 0; i--) days.push(new Date(Date.now() - i * 864e5).toISOString().slice(0, 10));
       const m = Object.fromEntries((d.byDay || []).map(x => [x.day, x])); const mx = Math.max(1, ...days.map(x => (m[x] || {}).v || 0));
       document.getElementById('bars').innerHTML = days.map(x => { const r = m[x] || { v: 0, u: 0 }; return `<i style="height:${Math.max(2, r.v / mx * 100)}%" data-t="${x}: ${r.v} visits, ${r.u} people"></i>`; }).join('');
+      const ub = Object.fromEntries((d.unlocksBySrc || []).map(x => [x.src, x.c]));
+      const rows = (d.bySrc || []).map(x => `<tr><td>${x.src}</td><td class="n">${n(x.v)}</td><td class="n">${n(x.u)}</td><td class="n">${n(ub[x.src] || 0)}</td><td class="n">${x.u ? ((ub[x.src] || 0) / x.u * 100).toFixed(1) + '%' : '–'}</td></tr>`).join('');
+      document.getElementById('src').innerHTML = `<tr><th>Source</th><th class="n">Visits</th><th class="n">People</th><th class="n">Unlocks</th><th class="n">Unlock rate</th></tr>${rows || '<tr><td colspan="5">No visits yet.</td></tr>'}`;
     } catch (e) { document.getElementById('sub').innerHTML = `<span class="err">Could not load stats: ${e.message}</span>`; }
   }
   load(); setInterval(load, 60000);

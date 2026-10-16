@@ -568,7 +568,37 @@ function premiumUnlocked() {
 }
 function storeUnlock(code) {
   try { localStorage.setItem(UNLOCK_KEY, code); } catch { /* storage unavailable: unlocked for this visit only */ }
-  beacon('/unlocked', { code, src: window.Native && window.Native.isNative ? 'app' : 'web' });
+  beacon('/unlocked', { code, src: window.Native && window.Native.isNative ? 'app' : 'web', from: firstSource() });
+  track('purchase', { value: 0.99, currency: 'USD', transaction_id: code });
+}
+// Where this browser first came from: utm_source/utm_campaign (or ?s=) on the first visit, kept so an unlock weeks
+// later is still credited to the campaign that brought the player. "direct" when there was nothing on the link.
+function firstSource() {
+  const KEY = 'cfb2md:src';
+  try {
+    const had = localStorage.getItem(KEY); if (had) return had;
+    const q = new URLSearchParams(location.search);
+    const s = (q.get('utm_source') || q.get('s') || '').toLowerCase(), c = (q.get('utm_campaign') || q.get('c') || '').toLowerCase();
+    const src = (s ? s + (c ? '/' + c : '') : 'direct').replace(/[^\w./-]/g, '').slice(0, 48) || 'direct';
+    localStorage.setItem(KEY, src); return src;
+  } catch { return 'direct'; }
+}
+// Ad-platform events, only when the tags are loaded (see window.ADS in index.html). purchase and begin_checkout are
+// the ones campaigns optimise on; drive_start and drive_done describe the funnel.
+function track(ev, p = {}) {
+  try {
+    const A = window.ADS || {};
+    if (window.gtag && A.gtag) window.gtag('event', ev, p);
+    if (window.fbq && A.meta) {
+      if (ev === 'purchase') window.fbq('track', 'Purchase', { value: p.value, currency: p.currency });
+      else if (ev === 'begin_checkout') window.fbq('track', 'InitiateCheckout', { value: p.value, currency: p.currency });
+      else window.fbq('trackCustom', ev, p);
+    }
+    if (window.twq && A.x && A.xEvents) {
+      if (ev === 'purchase' && A.xEvents.purchase) window.twq('event', A.xEvents.purchase, { value: p.value, currency: p.currency, conversion_id: p.transaction_id });
+      else if (ev === 'begin_checkout' && A.xEvents.lead) window.twq('event', A.xEvents.lead, {});
+    }
+  } catch { /* measurement never breaks the game */ }
 }
 // a fire-and-forget ping to the worker (visit tally, unlock tally); never blocks the game
 function beacon(path, params) {
@@ -613,7 +643,8 @@ function renderPaywall(mode) {
          <details class="restore"><summary>I already paid, or I have a gift code</summary><div class="fine">Paste the unlock code from your first device, the receipt email Stripe sent you, or a friend's GIFT code.</div><div class="row"><input id="codeIn" class="codein" placeholder="Unlock code, receipt email, or GIFT-…" autocomplete="off"><button class="cta ghost" id="codeBtn">Unlock</button></div><div class="fine" id="buyNote"></div></details>
          <div class="fine">Card payments by Stripe. One payment unlocks Cignetti mode and Saban mode, forever. It's also in the <a href="https://ncaa2mindrill.com/app">app</a>.</div>`}
   </section>`;
-  const b = $('#buyBtn'); if (b) b.onclick = async () => { b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { toast('Unlocked. Go win.'); setTab(mode); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
+  const sb = $('#stripeBtn'); if (sb) sb.addEventListener('click', () => track('begin_checkout', { value: 0.99, currency: 'USD' }));
+  const b = $('#buyBtn'); if (b) b.onclick = async () => { track('begin_checkout', { value: 0.99, currency: 'USD' }); b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { toast('Unlocked. Go win.'); setTab(mode); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
   const r = $('#restoreBtn'); if (r) r.onclick = async () => { $('#buyNote').textContent = 'Checking…'; try { const ok = await window.Native.restore(); $('#buyNote').textContent = ok ? 'Restored.' : 'No previous purchase found for this account.'; if (ok) setTab(mode); } catch (e) { $('#buyNote').textContent = 'Restore failed: ' + (e && e.message || e); } };
   const cb = $('#codeBtn'); if (cb) cb.onclick = async () => {
     const v = ($('#codeIn').value || '').trim(); if (!v) return;
@@ -841,7 +872,7 @@ function showIntro(sc, mode, no) {
     <div class="fine">Real score, clock, ball, timeouts and skill players from that game. ${esc(def.school)} coached by ${esc(sc.dcoach)}.${hm ? ' ' + hm.fine : ''}</div>
     ${hm ? unlockCodeNote() : ''}
   </section>`;
-  $('#go').onclick = () => { newGame(sc, mode, no); renderPlay(); };
+  $('#go').onclick = () => { track('drive_start', { mode }); newGame(sc, mode, no); renderPlay(); };
   const cc = $('#copyCode'); if (cc) cc.onclick = () => navigator.clipboard?.writeText(webUnlockCode()).then(() => toast('Code copied'), () => toast(webUnlockCode()));
 }
 
@@ -1345,6 +1376,7 @@ function conclude(end, n, msg) {
   if (G.mode === 'daily' || isHardMode(G.mode)) { (store[G.mode] ||= {})[G.no] = { done: G.done, grades: G.grades, log: G.log, snaps: G.snaps, coachWp: G.sc.cwp, sid: G.sc.id }; }
   else { store.practice[G.sc.id] = { wp, coachWp: G.sc.cwp }; }
   saveStore();
+  track('drive_done', { mode: G.mode, wp: Math.round(wp * 100), beat_coach: wp >= G.sc.cwp ? 1 : 0 });
   renderFinal();
   submitResult();
 }
@@ -1844,7 +1876,7 @@ fetch('data.json').then(r => r.json()).then(d => {
   D.cig = D.scen.filter(isCig).sort((a, b) => a.id - b.id);
   if (window.Native && window.Native.init) window.Native.init().then(() => { if (isHardMode(tab)) setTab(tab); }).catch(() => {});
   let seen = false; try { seen = localStorage.getItem('cfb2md:seen') === '1'; localStorage.setItem('cfb2md:seen', '1'); } catch { seen = true; }
-  beacon('/hit', { token: playerToken() });
+  beacon('/hit', { token: playerToken(), src: firstSource() });
   const back = location.search.includes('unlock=');
   const startTab = location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : location.hash === '#survival' ? 'survival' : 'daily';
   if (back) claimFromUrl().then(() => setTab(startTab)); else setTab(startTab);
