@@ -471,7 +471,7 @@ const isHardMode = m => m === 'saban' || m === 'cignetti';
 // Link; after paying, Stripe sends the player back here with the Checkout session id, the unlock worker verifies it
 // with Stripe and returns a signed unlock code, which the site keeps (and the player can paste on another device).
 const WEB_UNLOCKED = false;
-const STRIPE_LINK = 'https://buy.stripe.com/REPLACE_ME';          // Stripe → Payment Links → the $0.99 "Hard modes" link
+const STRIPE_LINK = 'https://buy.stripe.com/4gMcN47ic63E3UZ9dedAk00';   // Stripe → Payment Links → the $0.99 "Hard modes" link
 const UNLOCK_API = 'https://ncaa2mindrill-unlock.REPLACE_ME.workers.dev'; // the Cloudflare Worker in unlock-worker/
 const UNLOCK_KEY = 'cfb2md:unlock';
 function webUnlockCode() { try { return localStorage.getItem(UNLOCK_KEY) || ''; } catch { return ''; } }
@@ -491,6 +491,10 @@ async function claimFromUrl() {
   const sid = new URLSearchParams(location.search).get('unlock');
   if (!sid) return false;
   history.replaceState(null, '', location.pathname + (location.hash || ''));
+  if (UNLOCK_API.includes('REPLACE_ME')) { // no verification service yet: trust Stripe's redirect
+    if (/^cs_(live|test)_[A-Za-z0-9]+$/.test(sid)) { storeUnlock(sid); toast('Unlocked. Both modes are yours.'); return true; }
+    return false;
+  }
   try {
     const r = await unlockApi('/claim', { session_id: sid });
     if (r && r.ok && r.code) { storeUnlock(r.code); toast('Unlocked. Both modes are yours.'); return true; }
@@ -515,6 +519,10 @@ function renderPaywall(mode) {
   const cb = $('#codeBtn'); if (cb) cb.onclick = async () => {
     const v = ($('#codeIn').value || '').trim(); if (!v) return;
     $('#buyNote').textContent = 'Checking…';
+    if (UNLOCK_API.includes('REPLACE_ME')) { // no verification service yet: a session id from the receipt URL works
+      if (/^cs_(live|test)_[A-Za-z0-9]+$/.test(v)) { storeUnlock(v); toast('Unlocked.'); setTab(mode); } else $('#buyNote').textContent = 'Paste the code from the device you paid on (it starts with cs_). Email lookup is coming.';
+      return;
+    }
     try {
       const res = v.includes('@') ? await unlockApi('/restore', { email: v }) : await unlockApi('/verify', { code: v });
       if (res && res.ok && res.code) { storeUnlock(res.code); toast('Unlocked.'); setTab(mode); }
