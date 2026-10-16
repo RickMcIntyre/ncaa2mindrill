@@ -159,6 +159,7 @@
         const tg = sc.target;
         const lead = { x: tg.x + tg.vx * 0.55, y: tg.y + tg.vy * 0.55 };
         if (S.hail) { lead.x = Math.min(1095, X(S.finalYtg) + 10); lead.y = MID + (Math.random() - 0.5) * 120; }
+        lead.x = clamp(lead.x, 110, S.td ? 1150 : 1095); lead.y = clamp(lead.y, TOPY + 6, BOTY - 6);
         const d = dist(q, lead); const flight = clamp(d / 430 + 0.25, 0.35, 1.5);
         b.flying = { from: { x: q.x, y: q.y }, to: lead, t0: t, dur: flight, h: clamp(d / 6, 10, 70) * (S.depth === 'deep' || S.hail ? 1.2 : 0.7) };
         b.carrier = null;

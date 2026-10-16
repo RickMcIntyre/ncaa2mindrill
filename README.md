@@ -4,7 +4,7 @@ A college-football version of nfl2mindrill.com: one real late-game FBS drive a d
 
 ## Layout
 
-- `docs/` — the static site, ready to upload as-is. `index.html` is the page, `app.js` is the engine/UI, `data.json` is generated. Bump `app.js?v=` in index.html when you change app.js so browsers refetch it.
+- `docs/` — the static site, ready to upload as-is. `index.html` is the page, `app.js` is the engine/UI, `anim.js` animates each snap (routes, coverage, pursuit, ball flight, big-play popups), `data.json` is generated. Bump `app.js?v=` in index.html when you change app.js so browsers refetch it.
 - `build/build.py` — turns the raw play-by-play into `docs/data.json` (scenarios, pools of real snaps, win-probability and field-goal models, team ratings, lineups).
 - `build/wiki_coaches.py` — caches each team-season's Wikipedia infobox in `raw/wiki/` so interim head coaches get credited game by game.
 - `raw/` — downloaded inputs (not needed to run the site).
