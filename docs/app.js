@@ -458,7 +458,11 @@ function dailyScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(
 // Saban mode: the drives almost nobody wins. Its daily order is its own, offset so it never shares a game with the regular daily.
 function sabanScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.hard, i * 7 + 3) }; }
 const HARD_WP = 0.10, CIG_WP = 0.25;
-const isHard = s => s.wp0 <= HARD_WP || s.os - s.ds <= -9;
+const twoScore = s => s.os - s.ds <= -9;
+// Saban pool: brutal but attainable. One score down at 1-10% with time to run a play, or two scores down with at
+// least a minute left and a model that still gives it a pulse. The truly hopeless ones are kept out of everything.
+const isHard = s => (s.wp0 <= HARD_WP && s.wp0 >= 0.01 && s.secs >= 25 && !twoScore(s)) || (twoScore(s) && s.secs >= 60 && s.wp0 >= 0.003);
+const isHopeless = s => !isHard(s) && (s.wp0 < 0.01 || twoScore(s));
 // Cignetti mode: one shelf up from Saban. One score down, 10-25% to win. Hard, not hopeless.
 const isCig = s => s.os - s.ds >= -8 && s.wp0 > HARD_WP && s.wp0 <= CIG_WP;
 function cignettiScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.cig, i * 5 + 1) }; }
@@ -523,7 +527,7 @@ function renderPaywall(mode) {
     <div class="pitch"><b>Cignetti mode</b>: 10–25% to win. Hard, not hopeless. Start here.<br><b>Saban mode</b>: 10% to win or worse, or two scores down. The 28–3 drives.<br>One $0.99 unlock gets you both, with a new drive of each every day.</div>
     ${native ? `<button class="cta" id="buyBtn">Unlock Cignetti + Saban · ${esc(window.Native.price || '$0.99')}</button><button class="cta ghost" id="restoreBtn">Restore purchase</button><div class="fine" id="buyNote"></div>`
       : `${configured ? `<a class="cta" id="stripeBtn" href="${esc(STRIPE_LINK)}">Unlock Cignetti + Saban · $0.99</a>` : `<button class="cta" disabled>Unlock Cignetti + Saban · $0.99 · checkout opens soon</button>`}
-         <details class="restore"><summary>I already paid</summary><div class="fine">Paste the unlock code from your first device, or the receipt email Stripe sent you.</div><div class="row"><input id="codeIn" class="codein" placeholder="Unlock code or receipt email" autocomplete="off"><button class="cta ghost" id="codeBtn">Unlock</button></div><div class="fine" id="buyNote"></div></details>
+         <details class="restore"><summary>I already paid, or I have a gift code</summary><div class="fine">Paste the unlock code from your first device, the receipt email Stripe sent you, or a friend's GIFT code.</div><div class="row"><input id="codeIn" class="codein" placeholder="Unlock code, receipt email, or GIFT-…" autocomplete="off"><button class="cta ghost" id="codeBtn">Unlock</button></div><div class="fine" id="buyNote"></div></details>
          <div class="fine">Card payments by Stripe. One payment unlocks Cignetti mode and Saban mode, forever. It's also in the <a href="https://ncaa2mindrill.com/app">app</a>.</div>`}
   </section>`;
   const b = $('#buyBtn'); if (b) b.onclick = async () => { b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { toast('Unlocked. Go win.'); setTab(mode); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
@@ -531,6 +535,10 @@ function renderPaywall(mode) {
   const cb = $('#codeBtn'); if (cb) cb.onclick = async () => {
     const v = ($('#codeIn').value || '').trim(); if (!v) return;
     $('#buyNote').textContent = 'Checking…';
+    if (/^GIFT-/i.test(v)) { // a friend's gift code
+      try { const r = await unlockApi('/gift/redeem', { code: v.toUpperCase(), token: playerToken() }); if (r && r.ok && r.code) { storeUnlock(r.code); toast('Unlocked. Thank your friend.'); setTab(mode); } else $('#buyNote').textContent = r && r.reason === 'redeemed' ? 'That gift code was already used.' : 'That gift code didn\'t check out.'; } catch (e) { $('#buyNote').textContent = 'Could not reach the unlock service. Try again in a minute.'; }
+      return;
+    }
     if (UNLOCK_API.includes('REPLACE_ME')) { // no verification service yet: a session id from the receipt URL works
       if (/^cs_(live|test)_[A-Za-z0-9]+$/.test(v)) { storeUnlock(v); toast('Unlocked.'); setTab(mode); } else $('#buyNote').textContent = 'Paste the code from the device you paid on (it starts with cs_). Email lookup is coming.';
       return;
@@ -669,8 +677,17 @@ function setTab(t) {
   for (const [id, k] of [['tabDaily', 'daily'], ['tabSaban', 'saban'], ['tabCignetti', 'cignetti'], ['tabPractice', 'practice'], ['tabCoaches', 'coaches']]) $('#' + id).setAttribute('aria-pressed', String(k === t));
   document.documentElement.classList.toggle('saban', t === 'saban');
   document.documentElement.classList.toggle('cignetti', t === 'cignetti');
+  const sn = $('#subnav');
+  if (sn) {
+    if (isHardMode(t) && premiumUnlocked()) {
+      const v = hardView[t] || 'today';
+      sn.hidden = false;
+      sn.innerHTML = `<button data-view="today" aria-pressed="${v === 'today'}">Today's drive</button><button data-view="library" aria-pressed="${v === 'library'}">Library</button>`;
+      sn.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { hardView[t] = b.dataset.view; setTab(t); });
+    } else sn.hidden = true;
+  }
   if (t === 'daily') showDaily('daily');
-  else if (t === 'saban' || t === 'cignetti') showDaily(t);
+  else if (t === 'saban' || t === 'cignetti') { if ((hardView[t] || 'today') === 'library' && premiumUnlocked()) renderLibrary(t); else showDaily(t); }
   else if (t === 'practice') showPractice();
   else showCoaches();
   window.scrollTo(0, 0);
@@ -1284,6 +1301,7 @@ function renderFinal() {
     <div class="finalscore"><div class="fs"><span class="chip" style="background:${off.color}"></span><b>${esc(off.abbr)}</b><em>${d.os}</em></div><div class="fsmid"><div class="gl">After your drive</div><div class="note">${clock(d.T)} left</div></div><div class="fs r"><em>${d.ds}</em><b>${esc(def.abbr)}</b><span class="chip" style="background:${def.color}"></span></div></div>
     <h2 class="verdict">${esc(verdict)}</h2>
     ${d.trophy ? `<div class="trophy ${d.trophy}"><div class="who">Awarded</div><div class="big">${esc(TROPHY[d.trophy].label)}</div><div class="end">${esc(TROPHY[d.trophy].line)}</div></div>` : ''}
+    ${giftHTML()}
     ${sabanLine}
     ${tiles}
     <div class="vs">
@@ -1316,6 +1334,7 @@ function renderFinal() {
     <div class="row"><button class="cta ghost" id="more">Play another drive</button></div>
   </section>`;
   drawShareCard($('#shareCanvas'));
+  wireGift();
   if (G.done && (G.mode === 'daily' || isHardMode(G.mode)) && G.no && !UNLOCK_API.includes('REPLACE_ME')) unlockApi('/lb/stats', { day: G.no, mode: G.mode, wp: G.done.wp.toFixed(4) }).then(r => { if (r && r.ok && r.n) showLeaderboard(r); }).catch(() => {});
   const cached = G.pctl;
   const showPct = wps => {
@@ -1351,6 +1370,40 @@ function renderFinal() {
   $('#more').onclick = () => { if (G.mode === 'saban' || isHard(sc)) pf = { q: '', year: '', kind: 'saban' }; else if (G.mode === 'cignetti' || isCig(sc)) pf = { q: '', year: '', kind: 'cignetti' }; setTab('practice'); };
 }
 
+// ---------- hard-mode libraries (replayable; the daily stays under "Today's drive") ----------
+const hardView = { saban: 'today', cignetti: 'today' };
+const libFilter = { saban: { q: '', year: '' }, cignetti: { q: '', year: '' } };
+function renderLibrary(mode) {
+  const pool = mode === 'saban' ? D.hard : D.cig, m = HARD_MODES[mode], f = libFilter[mode];
+  $('#subline').textContent = `${m.label} · library · ${pool.length} drives`;
+  const years = D.years.map(y => `<option value="${y}" ${f.year == y ? 'selected' : ''}>${y}</option>`).join('');
+  app.innerHTML = `<div class="eyebrow" style="margin-bottom:8px">${esc(m.label)} library · ${mode === 'saban' ? 'brutal, but every one of these is winnable' : 'mildly out of the picture, every one attainable'} · replay any of them</div>
+    <div class="filters"><input id="lq" type="search" placeholder="Search a coach or school" value="${esc(f.q)}" aria-label="Search"><select id="ly" aria-label="Season"><option value="">All seasons</option>${years}</select><button class="cta ghost" id="lrnd" style="flex:0 0 auto;width:auto">Random</button></div><div id="llist"></div>`;
+  const draw = () => {
+    const q = f.q.trim().toLowerCase();
+    const list = pool.filter(s => (!f.year || s.year == f.year) && (!q || (s.coach + ' ' + s.dcoach + ' ' + T_(s.off).school + ' ' + T_(s.dfn).school).toLowerCase().includes(q))).sort((a, b) => b.wp0 - a.wp0);
+    $('#llist').innerHTML = `<p class="note">${list.length} drive${list.length === 1 ? '' : 's'}, easiest first</p><div class="cards">${list.slice(0, 150).map(s => { const gl = gameLabel(s), done = store.practice[s.id]; return `<button class="sc-card" data-id="${s.id}"><div class="m">${esc(gl.when)} · ${pct(s.wp0)} to win</div><div class="t">${esc(T_(s.off).school)} vs ${esc(T_(s.dfn).school)}</div><div class="s"><b>${headline(s)}</b>, ${clock(s.secs)} left, ball at ${esc(spot(s.ytg, s))}, ${s.to} TO</div><div class="s">Coach: ${esc(s.coach)}</div>${done ? `<div class="done">PLAYED · YOU ${pct(done.wp)} vs ${pct(done.coachWp)} · replay</div>` : ''}</button>`; }).join('')}</div>${list.length > 150 ? '<p class="note">Showing 150. Narrow the search for more.</p>' : ''}`;
+    $('#llist').querySelectorAll('[data-id]').forEach(b => b.onclick = () => { showIntro(D.scen[+b.dataset.id], 'practice'); window.scrollTo(0, 0); });
+  };
+  $('#lq').oninput = e => { f.q = e.target.value; draw(); };
+  $('#ly').onchange = e => { f.year = e.target.value; draw(); };
+  $('#lrnd').onclick = () => showIntro(pool[Math.floor(rand() * pool.length)], 'practice');
+  draw();
+}
+
+// ---------- gifts: beat a Saban drive once, unlock a friend ----------
+function giftEligible() { return G.mode === 'saban' && G.done && G.done.wp >= 0.5; }
+function giftHTML() {
+  if (!giftEligible() || (window.Native && window.Native.isNative)) return '';
+  const owner = webUnlockCode(); if (!owner) return '';
+  const g = store.gift;
+  return `<div class="card gift"><div class="who">You beat a Saban drive</div><div class="end">That's worth a membership for a friend: one gift code, both modes, free.</div>${g ? `<div class="end">Your gift code: <code class="code">${esc(g.code)}</code> <button class="mod" id="copyGift">Copy</button></div><div class="note">They paste it under "I already paid" on ncaa2mindrill.com.</div>` : `<div class="row"><button class="cta" id="giftBtn">Get my gift code</button></div><div class="fine" id="giftNote"></div>`}</div>`;
+}
+function wireGift() {
+  const b = $('#giftBtn'); if (b) b.onclick = async () => { b.disabled = true; $('#giftNote').textContent = 'Asking the front office…'; try { const r = await unlockApi('/gift/issue', { owner: webUnlockCode() }); if (r && r.ok && r.gift) { store.gift = { code: r.gift, ts: Date.now() }; saveStore(); renderFinal(); } else { $('#giftNote').textContent = r && r.reason === 'bad_owner' ? 'Gift codes come with a paid unlock. Yours could not be confirmed.' : 'No code right now. Try again in a minute.'; b.disabled = false; } } catch (e) { $('#giftNote').textContent = 'Could not reach the service.'; b.disabled = false; } };
+  const c = $('#copyGift'); if (c) c.onclick = () => navigator.clipboard?.writeText(`Free NCAA Two-Minute Drill membership (Saban + Cignetti mode). Paste this under "I already paid" at ncaa2mindrill.com/#saban: ${store.gift.code}`).then(() => toast('Copied with instructions'), () => toast(store.gift.code));
+}
+
 // ---------- practice ----------
 let pf = { q: '', year: '', kind: '' };
 function showPractice() {
@@ -1374,6 +1427,7 @@ function showPractice() {
       if (pf.kind === 'saban' && !isHard(s)) return false;
       if (pf.kind === 'cignetti' && !isCig(s)) return false;
       if (!pf.kind && d >= 9) return false;
+      if (isHopeless(s)) return false; // nobody gets the unwinnable ones
       if (!premiumUnlocked() && (isHard(s) || isCig(s))) return false; // the hard drives are the paid part
       if (!q) return true;
       return (s.coach + ' ' + s.dcoach + ' ' + T_(s.off).school + ' ' + T_(s.dfn).school).toLowerCase().includes(q);
@@ -1389,7 +1443,7 @@ function showPractice() {
   $('#pq').oninput = e => { pf.q = e.target.value; draw(); };
   $('#py').onchange = e => { pf.year = e.target.value; draw(); };
   $('#pk').onchange = e => { pf.kind = e.target.value; draw(); };
-  $('#rnd').onclick = () => { const pool = premiumUnlocked() ? D.scen : D.std.filter(s => !isHard(s) && !isCig(s)); showIntro(pool[Math.floor(rand() * pool.length)], 'practice'); };
+  $('#rnd').onclick = () => { const pool = (premiumUnlocked() ? D.scen : D.std.filter(s => !isHard(s) && !isCig(s))).filter(s => !isHopeless(s)); showIntro(pool[Math.floor(rand() * pool.length)], 'practice'); };
   draw();
 }
 

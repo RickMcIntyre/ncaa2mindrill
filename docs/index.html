@@ -84,6 +84,11 @@ nav.tabs .saban-tab { border-color: #6b2a2a; }
 nav.tabs .cig-tab[aria-pressed="true"] { background: var(--amber); color: #1b1203; border-color: var(--amber); }
 nav.tabs .cig-tab { border-color: #6b5a1e; }
 .paywall .cta { display: block; text-align: center; text-decoration: none; }
+.subnav { display: flex; justify-content: center; gap: 6px; margin: -4px 0 10px; }
+.subnav button { font-family: var(--f-ui); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
+.subnav button[aria-pressed="true"] { color: var(--amber); border-color: var(--amber); }
+.card.gift { display: grid; gap: 6px; border-color: var(--good); }
+.card.gift .who { font-family: var(--f-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--good); font-size: 13px; }
 .paywall .restore { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; display: grid; gap: 8px; }
 .paywall .restore summary { cursor: pointer; font-family: var(--f-ui); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 14px; }
 .codein { flex: 1 1 200px; background: var(--night); border: 1px solid var(--line); color: var(--chalk); border-radius: 8px; padding: 10px 12px; font: inherit; min-width: 0; }
@@ -313,6 +318,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
     <button id="tabPractice" aria-pressed="false">Practice</button>
     <button id="tabCoaches" aria-pressed="false">Coaches</button>
   </nav>
+  <div id="subnav" class="subnav" hidden></div>
   <main id="app"><p class="note" style="text-align:center">Loading three seasons of FBS drives, most of which did not go well…</p></main>
   <footer>
     <div>Every snap is drawn from a real 2023–2025 FBS play. Head coaches as of the game played.</div>
@@ -342,7 +348,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
 <script src="native.js?v=2"></script>
 <script src="sound.js?v=1"></script>
 <script src="anim.js?v=8"></script>
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 
 </body>
 </html>

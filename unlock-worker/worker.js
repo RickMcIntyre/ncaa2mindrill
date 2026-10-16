@@ -72,6 +72,30 @@ export default {
         if (hit) return json({ ok: true, code: await makeCode(env, hit.id) });
         return json({ ok: false, reason: 'not_found' });
       }
+      // ---- gifts: a paid member who beat a Saban drive gets one code that unlocks a friend
+      if (url.pathname === '/gift/issue' && env.DB) {
+        const owner = (url.searchParams.get('owner') || '').trim().slice(0, 80);
+        let good = await codeValid(env, owner);
+        if (!good && /^cs_(live|test)_[A-Za-z0-9]+$/.test(owner)) { // a raw Stripe session: confirm it if we can, trust it if we can't
+          try { const s = await stripe(env, '/checkout/sessions/' + owner); good = paid(s, env); } catch (e) { good = /stripe 401/.test(String(e && e.message)); }
+        }
+        if (!good) return json({ ok: false, reason: 'bad_owner' });
+        const existing = await env.DB.prepare('SELECT gift FROM gifts WHERE owner = ?1').bind(owner).first();
+        if (existing) return json({ ok: true, gift: existing.gift });
+        const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', bytes = crypto.getRandomValues(new Uint8Array(8));
+        const gift = 'GIFT-' + Array.from(bytes, b => alphabet[b % alphabet.length]).join('').replace(/(.{4})(.{4})/, '$1-$2');
+        await env.DB.prepare('INSERT INTO gifts (gift, owner, ts) VALUES (?1, ?2, ?3)').bind(gift, owner, Date.now()).run();
+        return json({ ok: true, gift });
+      }
+      if (url.pathname === '/gift/redeem' && env.DB) {
+        const gift = (url.searchParams.get('code') || '').trim().toUpperCase().slice(0, 20), token = (url.searchParams.get('token') || '').slice(0, 40);
+        if (!/^GIFT-[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(gift)) return json({ ok: false, reason: 'invalid' });
+        const row = await env.DB.prepare('SELECT gift, redeemed_by FROM gifts WHERE gift = ?1').bind(gift).first();
+        if (!row) return json({ ok: false, reason: 'invalid' });
+        if (row.redeemed_by && row.redeemed_by !== token) return json({ ok: false, reason: 'redeemed' });
+        if (!row.redeemed_by) await env.DB.prepare('UPDATE gifts SET redeemed_by = ?2, redeemed_ts = ?3 WHERE gift = ?1').bind(gift, token || 'unknown', Date.now()).run();
+        return json({ ok: true, code: await makeCode(env, 'gift' + gift.replace(/[^A-Z2-9]/g, '')) });
+      }
       // ---- traffic tally (D1). One row per browser per day, counted up; nothing personal is stored.
       if (url.pathname === '/hit' && env.DB) {
         const token = (url.searchParams.get('token') || '').slice(0, 40), day = new Date().toISOString().slice(0, 10);

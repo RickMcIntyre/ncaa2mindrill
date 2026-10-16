@@ -3,7 +3,7 @@ main = "worker.js"
 compatibility_date = "2026-10-01"
 
 [vars]
-ALLOWED_ORIGIN = "https://ncaa2mindrill.com,https://www.ncaa2mindrill.com,https://localhost,capacitor://localhost,http://localhost"
+ALLOWED_ORIGIN = "https://ncaa2mindrill.com,https://www.ncaa2mindrill.com,https://localhost,capacitor://localhost,http://localhost,http://localhost:8765"
 PRICE_MIN = "99"
 
 # Secrets are set with:  npx wrangler secret put STRIPE_SECRET   and   npx wrangler secret put UNLOCK_SECRET
