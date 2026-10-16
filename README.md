@@ -30,7 +30,7 @@ Then open http://localhost:8765/. To deploy, upload the contents of `docs/` (ind
 
 ## How the game works
 
-- **Scenarios**: every FBS-vs-FBS drive that started in Q4 with 2:30 or less, trailing by 1–8 or tied, at least 20 yards from the end zone. 608 drives.
+- **Scenarios**: every FBS-vs-FBS drive that started in Q4 with 2:30 or less, trailing by 1–16 or tied, at least 20 yards from the end zone. The regular daily uses the one-score drives (trailing by 8 or fewer); **Saban mode** uses drives that start at 10% win chance or worse, or two scores down.
 - **Outcomes**: each call draws a real 2023–2025 snap from a pool keyed by call type (depth × side for passes, inside/outside for runs), field zone and down. The draw is tilted by both teams' season EPA ratings and the chosen player's season numbers.
 - **Win probability**: a logistic model fitted on all Q4 FBS plays, by score bucket, with time, field position, down, distance, timeouts and pregame Elo gap. Calibrated within about one point in every decile.
 - **Clock**: college rules. Stops on incompletions and out of bounds; restarts on the ready-for-play after a first down, except inside two minutes where it briefly stops.

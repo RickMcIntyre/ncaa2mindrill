@@ -49,6 +49,10 @@ header.top { display: grid; grid-template-columns: 44px 1fr 44px; align-items: c
 nav.tabs { display: flex; justify-content: center; gap: 6px; padding-block: 12px; }
 nav.tabs button { font-family: var(--f-ui); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 14px; padding: 6px 16px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
 nav.tabs button[aria-pressed="true"] { background: var(--chalk); color: var(--night); border-color: var(--chalk); }
+/* Saban mode: the scoreboard bulbs go crimson */
+:root.saban { --amber: #d9433a; }
+nav.tabs .saban-tab[aria-pressed="true"] { background: var(--amber); color: #fff; border-color: var(--amber); }
+nav.tabs .saban-tab { border-color: #6b2a2a; }
 
 /* intro */
 .intro { max-width: 560px; margin: 18px auto 0; text-align: center; display: grid; gap: 14px; }
@@ -105,10 +109,22 @@ nav.tabs button[aria-pressed="true"] { background: var(--chalk); color: var(--ni
 .call b { font-family: var(--f-ui); font-weight: 700; font-size: 18px; letter-spacing: .02em; line-height: 1.1; }
 .call small { color: var(--muted); font-size: 12.5px; }
 .call.wide { grid-column: 1 / -1; border-color: var(--amber); }
-.call.rec { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.reccard { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: stretch; }
+.reccard .call.rec { min-width: 0; }
 .call.rec .who { display: grid; gap: 2px; min-width: 0; }
-.call.rec .route { font-family: var(--f-ui); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; background: var(--amber); color: #1b1203; border-radius: 999px; padding: 4px 12px; white-space: nowrap; }
-.call.rec:disabled .route { background: var(--line); color: var(--muted); }
+.reccard .route { display: inline-flex; align-items: center; gap: 6px; font-family: var(--f-ui); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: 13px; background: var(--amber); color: #1b1203; border: 0; border-radius: 8px; padding: 4px 12px; white-space: nowrap; }
+.reccard .route.blk { background: var(--panel-2); color: var(--chalk); border: 1px solid var(--line); }
+.reccard .route[aria-expanded="true"] { outline: 2px solid var(--chalk); }
+.reccard .call.rec:disabled + .route { opacity: .6; }
+.picker { grid-column: 1 / -1; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 8px; }
+.picker .pg { display: grid; gap: 4px; }
+.picker .pr { display: flex; flex-wrap: wrap; gap: 6px; }
+.rt { display: inline-flex; align-items: center; gap: 4px; font-family: var(--f-ui); font-weight: 600; font-size: 13px; letter-spacing: .04em; background: var(--panel); color: var(--chalk); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px 3px 4px; }
+.rt:hover:not(:disabled) { border-color: var(--amber); }
+.rt[aria-pressed="true"] { background: var(--amber); color: #1b1203; border-color: var(--amber); }
+.rt:disabled { opacity: .35; cursor: not-allowed; }
+.mods .gl { align-self: center; margin-right: 2px; }
+.mods .note { align-self: center; font-size: 12.5px; }
 .mods { display: flex; gap: 8px; flex-wrap: wrap; }
 .mod { font-family: var(--f-ui); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; border-radius: 999px; padding: 6px 14px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
 .mod[aria-pressed="true"] { background: var(--chalk); color: var(--night); border-color: var(--chalk); }
@@ -209,6 +225,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
   </header>
   <nav class="tabs" aria-label="Mode">
     <button id="tabDaily" aria-pressed="true">Daily</button>
+    <button id="tabSaban" aria-pressed="false" class="saban-tab">Saban mode</button>
     <button id="tabPractice" aria-pressed="false">Practice</button>
     <button id="tabCoaches" aria-pressed="false">Coaches</button>
   </nav>
@@ -226,6 +243,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
     <li><b>Call every snap.</b> Runs, passes by depth and side, spikes, field goals. Each result is a real college snap from the same kind of situation, nudged by how good both teams were that season.</li>
     <li><b>Manage the clock.</b> College rules: the clock stops on incompletions, out of bounds, and briefly on first downs inside the final two minutes. Burn a timeout when the clock is running.</li>
     <li><b>Beat the real coach.</b> When your drive ends, your win chance is compared with what the real head coach got.</li>
+    <li><b>Saban mode.</b> A second daily drive from the hopeless end of the pool: 10% to win or worse, or two scores down. Nobody is expected to win these.</li>
   </ol>
   <button class="cta" id="helpClose">Let's go</button>
 </dialog>
@@ -236,7 +254,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
   <button class="cta ghost" id="statsClose">Close</button>
 </dialog>
 
-<script src="app.js?v=2"></script>
+<script src="app.js?v=4"></script>
 
 </body>
 </html>

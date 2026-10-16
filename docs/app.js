@@ -53,22 +53,45 @@ const CALLS = {
   punt:   { grp: 'Clock & kicks', label: 'Punt', sub: 'Flip the field', dur: 7 },
 };
 // Routes a receiver can run. Each maps to a pool of real snaps (depth x side); dur is the extra time a longer route takes.
+// The full route tree. Every receiver can run any of them. p(sd, mid) draws the route on the field (offense moves +x;
+// sd is the receiver's sideline direction, mid is toward the middle). grp groups the picker; id is the pool of real snaps.
 const ROUTES = {
-  out:    { label: 'Out', id: 'p_short_side', dur: 0, say: 'on an out' },
-  slant:  { label: 'Slant', id: 'p_short_mid', dur: 0, say: 'on a slant' },
-  curl:   { label: 'Curl', id: 'p_short_side', dur: 1, say: 'on a curl' },
-  dig:    { label: 'Dig', id: 'p_short_mid', dur: 1, say: 'on a dig' },
-  go:     { label: 'Go', id: 'p_deep_side', dur: 2, say: 'on a go route' },
-  corner: { label: 'Corner', id: 'p_deep_side', dur: 2, say: 'on a corner route' },
-  post:   { label: 'Post', id: 'p_deep_mid', dur: 2, say: 'on a post' },
-  seam:   { label: 'Seam', id: 'p_deep_mid', dur: 2, say: 'up the seam' },
-  flat:   { label: 'Flat', id: 'p_rb', dur: 0, say: 'in the flat' },
-  angle:  { label: 'Angle', id: 'p_rb', dur: 0, say: 'on an angle route' },
-  wheel:  { label: 'Wheel', id: 'p_deep_side', dur: 2, say: 'on a wheel route' },
+  flat:     { label: 'Flat', grp: 'Short', id: 'p_rb', dur: 0, say: 'in the flat', p: (sd, m) => `l 15 ${sd * 85} l 60 0` },
+  swing:    { label: 'Swing', grp: 'Short', id: 'p_rb', dur: 0, say: 'on a swing pass', p: (sd, m) => `q 10 ${sd * 60} 60 ${sd * 80} l 40 0` },
+  screen:   { label: 'Screen', grp: 'Short', id: 'p_rb', dur: 0, say: 'on a screen', p: (sd, m) => `l -25 ${sd * 30} l 45 0` },
+  hitch:    { label: 'Hitch', grp: 'Short', id: 'p_short_side', dur: 0, say: 'on a hitch', p: (sd, m) => `l 60 0 l -15 ${sd * 12}` },
+  out:      { label: 'Out', grp: 'Short', id: 'p_short_side', dur: 0, say: 'on an out', p: (sd, m) => `l 70 0 l 0 ${sd * 70}` },
+  slant:    { label: 'Slant', grp: 'Short', id: 'p_short_mid', dur: 0, say: 'on a slant', p: (sd, m) => `l 30 0 l 90 ${m * 70}` },
+  drag:     { label: 'Drag', grp: 'Short', id: 'p_short_mid', dur: 0, say: 'on a shallow drag', p: (sd, m) => `l 35 0 l 10 ${m * 120}` },
+  angle:    { label: 'Angle', grp: 'Short', id: 'p_rb', dur: 0, say: 'on an angle route', p: (sd, m) => `l 40 ${sd * 60} l 80 ${-sd * 90}` },
+  curl:     { label: 'Curl', grp: 'Intermediate', id: 'p_short_side', dur: 1, say: 'on a curl', p: (sd, m) => `l 95 0 l -18 ${m * 14}` },
+  dig:      { label: 'Dig', grp: 'Intermediate', id: 'p_short_mid', dur: 1, say: 'on a dig', p: (sd, m) => `l 110 0 l 0 ${m * 90}` },
+  comeback: { label: 'Comeback', grp: 'Intermediate', id: 'p_short_side', dur: 1, say: 'on a comeback', p: (sd, m) => `l 130 0 l -25 ${sd * 35}` },
+  cross:    { label: 'Deep cross', grp: 'Intermediate', id: 'p_short_mid', dur: 2, say: 'on a deep crosser', p: (sd, m) => `l 90 0 l 120 ${m * 130}` },
+  go:       { label: 'Go', grp: 'Deep', id: 'p_deep_side', dur: 2, say: 'on a go route', p: (sd, m) => `l 320 0` },
+  fade:     { label: 'Fade', grp: 'Deep', id: 'p_deep_side', dur: 2, say: 'on a fade', p: (sd, m) => `q 150 ${sd * 15} 300 ${sd * 45}` },
+  corner:   { label: 'Corner', grp: 'Deep', id: 'p_deep_side', dur: 2, say: 'on a corner route', p: (sd, m) => `l 130 0 l 130 ${sd * 90}` },
+  wheel:    { label: 'Wheel', grp: 'Deep', id: 'p_deep_side', dur: 2, say: 'on a wheel route', p: (sd, m) => `l 25 ${sd * 75} l 240 0` },
+  post:     { label: 'Post', grp: 'Deep', id: 'p_deep_mid', dur: 2, say: 'on a post', p: (sd, m) => `l 130 0 l 150 ${m * 110}` },
+  seam:     { label: 'Seam', grp: 'Deep', id: 'p_deep_mid', dur: 2, say: 'up the seam', p: (sd, m) => `l 280 0` },
+  postcorner: { label: 'Post-corner', grp: 'Deep', id: 'p_deep_side', dur: 3, say: 'on a post-corner', p: (sd, m) => `l 110 0 l 60 ${m * 50} l 110 ${sd * 110}` },
+  block:    { label: 'Stay in & block', grp: 'Protect', id: null, dur: 0, say: '', p: (sd, m) => `l 12 0 m -4 -8 l 0 16` },
 };
-const ROUTE_CYCLE = { WR: ['out', 'slant', 'curl', 'dig', 'go', 'corner', 'post'], TE: ['out', 'slant', 'curl', 'dig', 'seam', 'corner'], RB: ['flat', 'angle', 'wheel'] };
+const ROUTE_GROUPS = ['Short', 'Intermediate', 'Deep', 'Protect'];
+// Field-tap quick cycle: the common handful per position. The chip opens the full tree.
+const ROUTE_CYCLE = { WR: ['out', 'slant', 'curl', 'dig', 'go', 'corner', 'post'], TE: ['out', 'slant', 'dig', 'seam', 'corner', 'block'], RB: ['flat', 'swing', 'angle', 'wheel', 'block'] };
 const DEFAULT_ROUTES = { WR0: 'go', WR1: 'out', WR2: 'slant', TE: 'dig', RB: 'flat' };
-function routeOk(st, key) { const r = ROUTES[key]; return r.id === 'p_deep_side' ? st.ytg > 20 : r.id === 'p_deep_mid' ? st.ytg > 25 : true; }
+// One-tap concepts: set every receiver at once
+const CONCEPTS = {
+  'Four verts': { WR0: 'go', WR1: 'go', WR2: 'seam', TE: 'seam', RB: 'block' },
+  'Mesh':       { WR0: 'drag', WR1: 'corner', WR2: 'drag', TE: 'dig', RB: 'swing' },
+  'Smash':      { WR0: 'hitch', WR1: 'hitch', WR2: 'corner', TE: 'corner', RB: 'flat' },
+  'Flood':      { WR0: 'go', WR1: 'post', WR2: 'out', TE: 'corner', RB: 'flat' },
+  'Spacing':    { WR0: 'curl', WR1: 'curl', WR2: 'hitch', TE: 'hitch', RB: 'flat' },
+  'Max protect':{ WR0: 'post', WR1: 'comeback', WR2: 'dig', TE: 'block', RB: 'block' },
+};
+function routeOk(st, key) { const r = ROUTES[key]; if (!r.id) return false; return r.id === 'p_deep_side' ? st.ytg > 20 : r.id === 'p_deep_mid' ? st.ytg > 25 : true; }
+function blockers() { return Object.values(G.routes).filter(k => k === 'block').length; }
 function available(st, id) {
   switch (id) {
     case 'r_sneak': return st.dist <= 2;
@@ -116,8 +139,10 @@ function outcomes(st, id, tgt, mods = {}) {
     const c = CALLS[id];
     const rec = tgt ?? (id === 'p_rb' ? L.rec.find(r => r.pos === 'RB') : null);
     // play action sells the run: deep throws open up, but the QB holds it longer; a roll-out shortens the sack window and favors the sideline
-    const adv = S.orat.op + S.drat.dp + (rec ? rec.adj * .6 : 0) + (mods.pa ? (c.depth === 'deep' ? .04 : -.01) : 0) + (mods.roll ? (c.side === 'side' ? .015 : -.02) : 0);
-    const depthF = (id === 'p_rb' ? .55 : c.depth === 'deep' ? 1.35 : .85) * (mods.pa ? 1.3 : 1) * (mods.roll ? .75 : 1);
+    // extra blockers: fewer sacks, but fewer receivers to find
+    const nb = mods.blockers || 0;
+    const adv = S.orat.op + S.drat.dp + (rec ? rec.adj * .6 : 0) + (mods.pa ? (c.depth === 'deep' ? .04 : -.01) : 0) + (mods.roll ? (c.side === 'side' ? .015 : -.02) : 0) - .012 * nb;
+    const depthF = (id === 'p_rb' ? .55 : c.depth === 'deep' ? 1.35 : .85) * (mods.pa ? 1.3 : 1) * (mods.roll ? .75 : 1) * (1 - .15 * nb);
     const intF = (id === 'p_rb' ? .45 : c.depth === 'deep' ? 1.9 : c.side === 'mid' ? 1.05 : .75) * (mods.roll ? .9 : 1);
     const pSack = clamp((dg === 'L' ? D.rates.sackL : lgSack) * depthF * Math.sqrt((L.qb.sack || lgSack) / lgSack) * (1 + S.drat.dp), .01, .22);
     const pInt = clamp(lgInt * intF * Math.sqrt((L.qb.int || lgInt) / lgInt) * (1 + 2 * S.drat.dp), .004, .12) * (1 - pSack);
@@ -257,7 +282,12 @@ function toast(msg) { const t = document.createElement('div'); t.className = 'to
 // ---------- daily ----------
 const LAUNCH = Date.UTC(2026, 9, 15);
 function todayIndex() { const now = new Date(); const d = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()); return Math.floor((d - LAUNCH) / 864e5); }
-function dailyScenario() { const i = todayIndex(); return { no: i + 1, sc: D.scen[((i % D.scen.length) + D.scen.length) % D.scen.length] }; }
+const pick = (list, i) => list[((i % list.length) + list.length) % list.length];
+function dailyScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.std, i) }; }
+// Saban mode: the drives almost nobody wins. Its daily order is its own, offset so it never shares a game with the regular daily.
+function sabanScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.hard, i * 7 + 3) }; }
+const HARD_WP = 0.10;
+const isHard = s => s.wp0 <= HARD_WP || s.os - s.ds <= -9;
 
 // ---------- game state ----------
 let G = null; // current game
@@ -265,7 +295,7 @@ function newGame(sc, mode, no) {
   G = {
     mode, no, sc, log: [], grades: [],
     st: { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0 },
-    useTO: false, picking: null, last: null, busy: false, done: null, routes: { ...DEFAULT_ROUTES }, mods: {},
+    useTO: false, picking: null, pickerSlot: null, last: null, busy: false, done: null, routes: { ...DEFAULT_ROUTES }, mods: {},
   };
   G.wp0 = wpModel(G.st.s, G.st.T, G.st.ytg, G.st.down, G.st.dist, G.st.to, G.st.dto, G.st.elo);
 }
@@ -336,13 +366,15 @@ function routeFor(r) { return G.routes?.[r.slot] || DEFAULT_ROUTES[r.slot] || 'o
 // SVG path of a route, drawn from the receiver's spot; offense moves +x, sideline is sideDir
 function routePath(r, los, key) {
   const x0 = los - r.dx, y0 = r.y, sd = r.sideDir, mid = y0 > 266 ? -1 : 1;
-  const P = {
-    out: `l 70 0 l 0 ${sd * 70}`, slant: `l 30 0 l 90 ${mid * 70}`, curl: `l 90 0 l -18 ${mid * 14}`, dig: `l 110 0 l 0 ${mid * 90}`,
-    go: `l 320 0`, corner: `l 130 0 l 130 ${sd * 90}`, post: `l 130 0 l 150 ${mid * 110}`, seam: `l 280 0`,
-    flat: `l 20 ${sd * 90} l 60 0`, angle: `l 40 ${sd * 60} l 80 ${-sd * 90}`, wheel: `l 30 ${sd * 80} l 240 0`,
-  }[key] || 'l 60 0';
-  const d = `M ${x0} ${y0} ${P}`;
+  const rt = ROUTES[key] || ROUTES.out;
+  const d = `M ${x0} ${y0} ${rt.p(sd, mid)}`;
+  if (!rt.id) return `<path d="${d}" stroke="#fff" stroke-width="4" fill="none" opacity=".8"/>`;
   return `<path d="${d}" stroke="#fff" stroke-width="3" stroke-dasharray="9 7" fill="none" opacity=".85" marker-end="url(#arrow)"/>`;
+}
+// Tiny route icon for the picker (receiver at bottom-left, moving right)
+function routeIcon(key) {
+  const rt = ROUTES[key];
+  return `<svg viewBox="-8 -40 60 50" width="30" height="25" aria-hidden="true"><path d="M 0 0 ${rt.p(-1, -1)}" transform="scale(.14)" vector-effect="non-scaling-stroke" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle r="2.6" fill="currentColor"/></svg>`;
 }
 
 // ---------- rendering: shared bits ----------
@@ -365,33 +397,42 @@ function lineupHTML(sc) {
 let tab = 'daily';
 function setTab(t) {
   tab = t;
-  for (const [id, k] of [['tabDaily', 'daily'], ['tabPractice', 'practice'], ['tabCoaches', 'coaches']]) $('#' + id).setAttribute('aria-pressed', String(k === t));
-  if (t === 'daily') showDaily();
+  for (const [id, k] of [['tabDaily', 'daily'], ['tabSaban', 'saban'], ['tabPractice', 'practice'], ['tabCoaches', 'coaches']]) $('#' + id).setAttribute('aria-pressed', String(k === t));
+  document.documentElement.classList.toggle('saban', t === 'saban');
+  if (t === 'daily') showDaily('daily');
+  else if (t === 'saban') showDaily('saban');
   else if (t === 'practice') showPractice();
   else showCoaches();
   window.scrollTo(0, 0);
 }
 
-function showDaily() {
-  const { no, sc } = dailyScenario();
-  const prev = store.daily[no];
-  $('#subline').textContent = `No. ${no} · ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
-  if (prev && prev.done) { newGame(sc, 'daily', no); G.done = prev.done; G.grades = prev.grades || []; G.log = prev.log || []; renderFinal(); return; }
-  showIntro(sc, 'daily', no);
+function showDaily(mode) {
+  const { no, sc } = mode === 'saban' ? sabanScenario() : dailyScenario();
+  const prev = (store[mode] ||= {})[no];
+  const date = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  $('#subline').textContent = mode === 'saban' ? `Saban mode · No. ${no} · ${date}` : `No. ${no} · ${date}`;
+  if (prev && prev.done) { newGame(sc, mode, no); G.done = prev.done; G.grades = prev.grades || []; G.log = prev.log || []; renderFinal(); return; }
+  showIntro(sc, mode, no);
 }
 
 function showIntro(sc, mode, no) {
   const off = T_(sc.off), def = T_(sc.dfn), gl = gameLabel(sc);
   const st = { s: sc.os - sc.ds };
   if (mode === 'practice') $('#subline').textContent = `Practice · ${gl.when}`;
+  const hard = isHard(sc), saban = mode === 'saban';
+  const eyebrow = saban ? 'Saban mode' : mode === 'daily' ? "Today's drive" : hard ? 'Practice · Saban-hard drive' : 'Practice drive';
+  const twoScore = sc.os - sc.ds <= -9;
+  const pitch = saban
+    ? `Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}, calling it for <b>${esc(off.school)}</b>. Starting win chance: <b>${pct(sc.wp0)}</b>.${twoScore ? ' Two scores down: you need a touchdown, the onside kick, and then some.' : ''}<br>${esc(sc.coach)} didn't pull it off. Can you?`
+    : `Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}. You're calling it for <b>${esc(off.school)}</b>.<br>Can you do better than <b>${esc(sc.coach)}</b> did?`;
   app.innerHTML = `<section class="intro">
-    <div class="eyebrow">${mode === 'daily' ? "Today's drive" : 'Practice drive'} · ${esc(gl.when)}</div>
+    <div class="eyebrow">${eyebrow} · ${esc(gl.when)}</div>
     <div class="eyebrow" style="color:var(--chalk)">${esc(gl.title)}</div>
     <h2 class="headline">${headline(sc)}<small>${clock(sc.secs)} left in the game</small></h2>
     ${bug({ ...st, os: sc.os, ds: sc.ds, T: sc.secs, to: sc.to, dto: sc.dto }, sc)}
-    <div class="pitch">Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}. You're calling it for <b>${esc(off.school)}</b>.<br>Can you do better than <b>${esc(sc.coach)}</b> did?</div>
-    <button class="cta" id="go">Take the field</button>
-    <div class="fine">Real score, clock, ball, timeouts and skill players from that game. ${esc(def.school)} coached by ${esc(sc.dcoach)}.</div>
+    <div class="pitch">${pitch}</div>
+    <button class="cta" id="go">${saban ? 'Nobody wins this one' : 'Take the field'}</button>
+    <div class="fine">Real score, clock, ball, timeouts and skill players from that game. ${esc(def.school)} coached by ${esc(sc.dcoach)}.${saban ? ` Saban mode drives start at ${pct(HARD_WP)} win chance or worse, or two scores down.` : ''}</div>
   </section>`;
   $('#go').onclick = () => { newGame(sc, mode, no); renderPlay(); };
 }
@@ -444,22 +485,28 @@ function renderSide() {
   let h = resultHTML();
   if (G.picking === 'pass') {
     const recs = receivers(sc);
-    const rb = recs.find(r => r.slot === 'RB');
-    const m = G.mods;
+    const m = G.mods, nb = blockers();
+    const picker = slot => `<div class="picker" data-picker="${slot}">${ROUTE_GROUPS.map(gname => `<div class="pg"><div class="gl">${gname}</div><div class="pr">${Object.entries(ROUTES).filter(([, r]) => r.grp === gname).map(([k, r]) => {
+      const ok = r.id ? routeOk(st, k) : true;
+      return `<button class="rt" data-set="${slot}:${k}" aria-pressed="${routeFor({ slot }) === k}" ${ok ? '' : 'disabled'} title="${esc(r.label)}">${routeIcon(k)}<span>${esc(r.label)}</span></button>`;
+    }).join('')}</div></div>`).join('')}</div>`;
     h += `<div class="grp"><div class="h">Pass <button class="back" id="back">◀ Back</button></div>
-      <div class="note">Tap a receiver on the field or his route chip to change the route. Tap his name to throw it to him.</div>
-      <div class="mods"><button class="mod" data-mod="pa" aria-pressed="${!!m.pa}">Play action</button><button class="mod" data-mod="roll" aria-pressed="${!!m.roll}">Roll out</button></div>
+      <div class="note">Tap a receiver's route chip to pick any route (or tap him on the field to flip through the usual ones). Tap his name to throw it to him.</div>
+      <div class="mods"><span class="gl">Concept</span>${Object.keys(CONCEPTS).map(c => `<button class="mod" data-concept="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+      <div class="mods"><span class="gl">Quarterback</span><button class="mod" data-mod="pa" aria-pressed="${!!m.pa}">Play action</button><button class="mod" data-mod="roll" aria-pressed="${!!m.roll}">Roll out</button>${nb ? `<span class="note">${nb} extra blocker${nb > 1 ? 's' : ''}: fewer sacks, fewer targets</span>` : ''}</div>
       <div class="calls">${recs.map(r => {
-        const key = routeFor(r), ok = routeOk(st, key);
-        return `<button class="call rec" data-tgt="${r.slot}" ${ok ? '' : 'disabled'}><span class="who"><b>${esc(r.num ? '#' + r.num + ' ' : '')}${esc(short(r.name))}</b><small>${r.pos} · ${Math.round(r.c * 100)}% caught · ${r.yds.toFixed(1)} yds/target</small></span><span class="route" data-route="${r.slot}" role="button" aria-label="Change route">${esc(ROUTES[key].label)}${ok ? '' : ' · too deep'}</span></button>`;
+        const key = routeFor(r), rt = ROUTES[key], ok = routeOk(st, key), open = G.pickerSlot === r.slot;
+        return `<div class="reccard ${open ? 'open' : ''}"><button class="call rec" data-tgt="${r.slot}" ${ok ? '' : 'disabled'}><span class="who"><b>${esc(r.num ? '#' + r.num + ' ' : '')}${esc(short(r.name))}</b><small>${r.pos} · ${Math.round(r.c * 100)}% caught · ${r.yds.toFixed(1)} yds/target</small></span></button><button class="route ${rt.id ? '' : 'blk'}" data-route="${r.slot}" aria-expanded="${open}" aria-label="Change ${esc(short(r.name))}'s route">${routeIcon(key)}${esc(rt.label)}${rt.id && !ok ? ' · too deep' : ''}</button>${open ? picker(r.slot) : ''}</div>`;
       }).join('')}</div>
-      <div class="calls">${rb ? `<button class="call" data-call="p_rb"><b>Screen</b><small>To ${esc(short(rb.name))}, blockers in front</small></button>` : ''}${available(st, 'hail') ? `<button class="call" data-call="hail"><b>Hail Mary</b><small>Everyone to the end zone</small></button>` : ''}</div></div>`;
+      <div class="calls">${available(st, 'hail') ? `<button class="call" data-call="hail"><b>Hail Mary</b><small>Everyone to the end zone</small></button>` : ''}</div></div>`;
     side.innerHTML = h;
-    $('#back').onclick = () => { G.picking = null; renderPlay(); };
+    $('#back').onclick = () => { G.picking = null; G.pickerSlot = null; renderPlay(); };
     side.querySelectorAll('[data-mod]').forEach(b => b.onclick = () => { G.mods[b.dataset.mod] = !G.mods[b.dataset.mod]; renderSide(); });
-    side.querySelectorAll('[data-route]').forEach(b => b.onclick = e => { e.stopPropagation(); cycleRoute(b.dataset.route); });
-    side.querySelectorAll('[data-tgt]').forEach(b => b.onclick = () => { const r = recs.find(x => x.slot === b.dataset.tgt); runPlay(ROUTES[routeFor(r)].id, r, { ...G.mods, route: routeFor(r) }); });
-    side.querySelectorAll('[data-call]').forEach(b => b.onclick = () => runPlay(b.dataset.call, b.dataset.call === 'p_rb' ? rb : null, { ...G.mods }));
+    side.querySelectorAll('[data-concept]').forEach(b => b.onclick = () => { Object.assign(G.routes, CONCEPTS[b.dataset.concept]); G.pickerSlot = null; renderPlay(); });
+    side.querySelectorAll('[data-route]').forEach(b => b.onclick = () => { G.pickerSlot = G.pickerSlot === b.dataset.route ? null : b.dataset.route; renderSide(); });
+    side.querySelectorAll('[data-set]').forEach(b => b.onclick = () => { const [slot, k] = b.dataset.set.split(':'); G.routes[slot] = k; G.pickerSlot = null; renderPlay(); });
+    side.querySelectorAll('[data-tgt]').forEach(b => b.onclick = () => { const r = recs.find(x => x.slot === b.dataset.tgt); runPlay(ROUTES[routeFor(r)].id, r, { ...G.mods, route: routeFor(r), blockers: nb }); });
+    side.querySelectorAll('[data-call]').forEach(b => b.onclick = () => runPlay(b.dataset.call, null, { ...G.mods, blockers: nb }));
     return;
   }
   h += `<div class="h">Your call <span>${downText(st)} · ${esc(spot(st.ytg, sc))}</span></div>`;
@@ -495,6 +542,7 @@ function cycleRoute(slot) {
   const list = ROUTE_CYCLE[pos] || ROUTE_CYCLE.WR;
   const cur = G.routes[slot] || DEFAULT_ROUTES[slot];
   G.routes[slot] = list[(list.indexOf(cur) + 1) % list.length];
+  G.pickerSlot = null;
   renderPlay();
 }
 
@@ -623,7 +671,7 @@ function conclude(end, n, msg) {
   else { wp = oppBall(n, n.s, n.T, end.oppYtg); desc = `${end.why}. ${T_(G.sc.dfn).school} takes over with ${clock(n.T)} left.`; }
   const scored = n.os - G.sc.os;
   G.done = { wp, desc, os: n.os, ds: n.ds, T: n.T, scored, snaps: n.snaps };
-  if (G.mode === 'daily') { store.daily[G.no] = { done: G.done, grades: G.grades, log: G.log, coachWp: G.sc.cwp, sid: G.sc.id }; }
+  if (G.mode === 'daily' || G.mode === 'saban') { (store[G.mode] ||= {})[G.no] = { done: G.done, grades: G.grades, log: G.log, coachWp: G.sc.cwp, sid: G.sc.id }; }
   else { store.practice[G.sc.id] = { wp, coachWp: G.sc.cwp }; }
   saveStore();
   renderFinal();
@@ -638,17 +686,20 @@ function renderFinal() {
   const diff = d.wp - sc.cwp;
   const verdict = Math.abs(diff) < 0.02 ? `Dead even with ${sc.coach}` : diff > 0 ? `You beat ${sc.coach}` : `${sc.coach} wins this one`;
   const you = d.wp >= sc.cwp;
+  const saban = G.mode === 'saban';
+  const sabanLine = saban ? `<div class="eyebrow" style="text-align:center;color:var(--amber)">${d.wp >= 0.5 ? 'You pulled it off. Saban would nod.' : d.wp > sc.wp0 ? `You raised a ${pct(sc.wp0)} shot to ${pct(d.wp)}.` : `A ${pct(sc.wp0)} shot stayed a long shot.`}</div>` : '';
   const real = sc.real.map(p => `<li><span>${p.d ? `${ord(p.d)}&${p.dist}` : '—'} ${p.s != null ? clock(p.s) : ''}</span>${esc(p.t)}</li>`).join('');
   app.innerHTML = `<section class="final">
     <div class="eyebrow" style="text-align:center">${esc(gl.when)} · ${esc(gl.title)}</div>
     <h2 class="verdict">${esc(verdict)}</h2>
+    ${sabanLine}
     <div class="grid-emoji" aria-label="Your play grades">${G.grades.join('')}</div>
     <div class="vs">
       <div class="${you ? 'winner' : ''}"><div class="who">You</div><div class="big">${pct(d.wp)}<small>win chance</small></div><div class="end">${esc(d.desc)}</div><div class="note">Score ${off.abbr} ${d.os}, ${def.abbr} ${d.ds} · ${d.snaps} snaps</div></div>
       <div class="${you ? '' : 'winner'}"><div class="who">${esc(sc.coach)}</div><div class="big">${pct(sc.cwp)}<small>win chance</small></div><div class="end">${esc(resultWord(sc))}. ${sc.won ? 'Won' : 'Lost'} ${sc.final[0]}–${sc.final[1]}.</div><div class="note">Win chance at the end of the real drive, same model as yours.</div></div>
     </div>
     <div class="row">
-      ${G.mode === 'daily' ? '<button class="cta" id="share">Copy result</button>' : '<button class="cta" id="again">Replay this drive</button>'}
+      ${G.mode === 'daily' || saban ? '<button class="cta" id="share">Copy result</button>' : '<button class="cta" id="again">Replay this drive</button>'}
       <button class="cta ghost" id="more">Play another drive</button>
     </div>
     <div class="realdrive"><div class="h">What ${esc(sc.coach)} actually called</div><ol>${real}</ol></div>
@@ -656,11 +707,11 @@ function renderFinal() {
   </section>`;
   const sh = $('#share');
   if (sh) sh.onclick = () => {
-    const txt = `NCAA Two-Minute Drill #${G.no}\n${gl.title} (${sc.year})\n${G.grades.join('')}\nMe: ${pct(d.wp)} · ${sc.coach}: ${pct(sc.cwp)}\nncaa2mindrill.com`;
+    const txt = `NCAA Two-Minute Drill${saban ? ' · SABAN MODE' : ''} #${G.no}\n${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}\n${G.grades.join('')}\nMe: ${pct(d.wp)} · ${sc.coach}: ${pct(sc.cwp)}\nncaa2mindrill.com`;
     navigator.clipboard?.writeText(txt).then(() => toast('Copied'), () => toast(txt));
   };
   const ag = $('#again'); if (ag) ag.onclick = () => { newGame(sc, G.mode, G.no); renderPlay(); };
-  $('#more').onclick = () => setTab('practice');
+  $('#more').onclick = () => { if (saban || isHard(sc)) pf = { q: '', year: '', kind: 'saban' }; setTab('practice'); };
 }
 
 // ---------- practice ----------
@@ -671,7 +722,7 @@ function showPractice() {
   app.innerHTML = `<div class="filters">
       <input id="pq" type="search" placeholder="Search a coach or school" value="${esc(pf.q)}" aria-label="Search a coach or school">
       <select id="py" aria-label="Season"><option value="">All seasons</option>${years}</select>
-      <select id="pk" aria-label="Situation"><option value="">Any situation</option><option value="tied" ${pf.kind === 'tied' ? 'selected' : ''}>Tied</option><option value="fg" ${pf.kind === 'fg' ? 'selected' : ''}>Down 1–3</option><option value="td" ${pf.kind === 'td' ? 'selected' : ''}>Down 4–8</option></select>
+      <select id="pk" aria-label="Situation"><option value="">Any situation</option><option value="tied" ${pf.kind === 'tied' ? 'selected' : ''}>Tied</option><option value="fg" ${pf.kind === 'fg' ? 'selected' : ''}>Down 1–3</option><option value="td" ${pf.kind === 'td' ? 'selected' : ''}>Down 4–8</option><option value="two" ${pf.kind === 'two' ? 'selected' : ''}>Down 9+ (two scores)</option><option value="saban" ${pf.kind === 'saban' ? 'selected' : ''}>Saban-hard (≤${Math.round(HARD_WP * 100)}% to start)</option></select>
       <button class="cta ghost" id="rnd" style="flex:0 0 auto;width:auto">Random drive</button>
     </div><div id="plist"></div>`;
   const draw = () => {
@@ -681,7 +732,10 @@ function showPractice() {
       if (pf.year && s.year != pf.year) return false;
       if (pf.kind === 'tied' && d !== 0) return false;
       if (pf.kind === 'fg' && !(d >= 1 && d <= 3)) return false;
-      if (pf.kind === 'td' && !(d >= 4)) return false;
+      if (pf.kind === 'td' && !(d >= 4 && d <= 8)) return false;
+      if (pf.kind === 'two' && !(d >= 9)) return false;
+      if (pf.kind === 'saban' && !isHard(s)) return false;
+      if (!pf.kind && d >= 9) return false;
       if (!q) return true;
       return (s.coach + ' ' + s.dcoach + ' ' + T_(s.off).school + ' ' + T_(s.dfn).school).toLowerCase().includes(q);
     }).sort((a, b) => b.date.localeCompare(a.date));
@@ -716,7 +770,7 @@ function showCoaches() {
   const val = (c, k) => k === 'name' ? c.name : k === 'rate' ? c.scores / c.drives : k === 'add' ? c.wp / c.drives : c[k];
   rows.sort((a, b) => { const x = val(a, csort.k), y = val(b, csort.k); return (x > y ? 1 : x < y ? -1 : 0) * csort.dir || b.drives - a.drives; });
   const th = (k, l, num) => `<th class="${num ? 'num' : ''}" data-k="${k}" aria-sort="${csort.k === k ? (csort.dir > 0 ? 'ascending' : 'descending') : 'none'}">${l}${csort.k === k ? (csort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
-  app.innerHTML = `<p class="note">Every FBS head coach who faced a late, one-score drive in this game's pool (Q4, 2:30 or less, trailing by 8 or fewer or tied). "Added" is how much the real drive moved the coach's win chance on average. Click a coach to play their drives.</p>
+  app.innerHTML = `<p class="note">Every FBS head coach who faced a late, one-score drive in this game's pool (Q4, 2:30 or less, trailing by 16 or fewer or tied). "Added" is how much the real drive moved the coach's win chance on average. Click a coach to play their drives.</p>
   <div class="tablewrap"><table><thead><tr>${th('name', 'Coach')}<th>School</th>${th('drives', 'Drives', 1)}${th('rate', 'Scored', 1)}${th('wins', 'Won game', 1)}${th('add', 'Added', 1)}</tr></thead><tbody>
   ${rows.map(c => `<tr data-c="${esc(c.name)}"><td>${esc(c.name)}</td><td>${esc([...c.teams].join(', '))}</td><td class="num">${c.drives}</td><td class="num">${pct(c.scores / c.drives)}</td><td class="num">${c.wins}</td><td class="num">${c.wp >= 0 ? '+' : ''}${Math.round(c.wp / c.drives * 100)}</td></tr>`).join('')}
   </tbody></table></div>`;
@@ -731,13 +785,17 @@ function showStats() {
   let streak = 0, today = todayIndex() + 1;
   for (let i = today; store.daily[i]?.done; i--) streak++;
   const avg = days.length ? days.reduce((a, [, v]) => a + (v.done.wp - v.coachWp), 0) / days.length : 0;
-  $('#statsBody').innerHTML = `<div><b>${days.length}</b><span>Played</span></div><div><b>${beat}</b><span>Beat the coach</span></div><div><b>${streak}</b><span>Day streak</span></div><div><b>${days.length ? (avg >= 0 ? '+' : '') + Math.round(avg * 100) : '–'}</b><span>Avg vs coach</span></div>`;
+  const sab = Object.values(store.saban || {}).filter(v => v.done);
+  const sabWon = sab.filter(v => v.done.wp >= 0.5).length;
+  $('#statsBody').innerHTML = `<div><b>${days.length}</b><span>Played</span></div><div><b>${beat}</b><span>Beat the coach</span></div><div><b>${streak}</b><span>Day streak</span></div><div><b>${days.length ? (avg >= 0 ? '+' : '') + Math.round(avg * 100) : '–'}</b><span>Avg vs coach</span></div>` +
+    `<div><b>${sab.length}</b><span>Saban drives</span></div><div><b>${sabWon}</b><span>Saban wins (50%+)</span></div><div><b>${sab.filter(v => v.done.wp >= v.coachWp).length}</b><span>Saban: beat coach</span></div><div><b>${sab.length ? pct(Math.max(...sab.map(v => v.done.wp))) : '–'}</b><span>Best Saban finish</span></div>`;
   $('#statsNote').textContent = days.length ? 'Saved in this browser only.' : 'Finish today\'s drive to start your record. Saved in this browser only.';
   $('#statsDlg').showModal();
 }
 
 // ---------- boot ----------
 $('#tabDaily').onclick = () => setTab('daily');
+$('#tabSaban').onclick = () => setTab('saban');
 $('#tabPractice').onclick = () => setTab('practice');
 $('#tabCoaches').onclick = () => setTab('coaches');
 $('#helpBtn').onclick = () => $('#helpDlg').showModal();
@@ -748,6 +806,8 @@ $('#statsClose').onclick = () => $('#statsDlg').close();
 fetch('data.json').then(r => r.json()).then(d => {
   D = d;
   for (const s of D.scen) s.wp0 = wpModel(s.os - s.ds, s.secs, s.ytg, s.down, s.dist, s.to, s.dto, s.elo);
+  D.std = D.scen.filter(s => s.os - s.ds >= -8);           // the regular daily pool, in its fixed order
+  D.hard = D.scen.filter(isHard).sort((a, b) => a.id - b.id);
   let seen = false; try { seen = localStorage.getItem('cfb2md:seen') === '1'; localStorage.setItem('cfb2md:seen', '1'); } catch { seen = true; }
   setTab('daily');
   if (!seen) $('#helpDlg').showModal();

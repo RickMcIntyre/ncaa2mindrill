@@ -410,7 +410,7 @@ for st in [(-7, 110, 75, 1, 10, 2, 3), (-3, 30, 30, 1, 10, 1, 3), (-3, 5, 25, 1,
 # ---------- scenarios ----------
 first = p[(p.is_passplay | p.is_rushplay | p.is_sack | (p.play_type == 'Penalty')) & ~p.kneel].groupby('id_drive').head(1)
 cand = first[(first.period == 4) & (first.TimeSecsRem <= 150) & (first.TimeSecsRem >= 20) &
-             (first.pos_team_score - first.def_pos_team_score).between(-8, 0) & first.yards_to_goal.between(20, 99)]
+             (first.pos_team_score - first.def_pos_team_score).between(-16, 0) & first.yards_to_goal.between(20, 99)]
 
 tout = p[p.play_type == 'Timeout'].copy()
 tout['who'] = tout.text.str.extract(r'^Timeout ([^,]+),')[0]
@@ -519,9 +519,15 @@ for (y, tid), name in coach.items():
         coaches.setdefault(name, []).append([y, tid])
 
 # deterministic daily order: seeded shuffle, marquee (higher combined elo) games front-loaded a bit
+# two-score drives (Saban mode) use their own generator and sort after the one-score pool, so the daily order of
+# the one-score drives never shifts when they are added
+rng2 = random.Random(99)
 for s in scen:
     g = gmeta.loc[s['gid']]
-    s['_k'] = rng.random() - ((g.helo + g.aelo) / 2 - 1500) / 1500.0
+    if s['os'] - s['ds'] >= -8:
+        s['_k'] = rng.random() - ((g.helo + g.aelo) / 2 - 1500) / 1500.0
+    else:
+        s['_k'] = 10 + rng2.random()
 scen.sort(key=lambda s: s['_k'])
 for i, s in enumerate(scen):
     s.pop('_k')
