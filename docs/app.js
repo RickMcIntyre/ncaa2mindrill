@@ -679,6 +679,7 @@ function showDaily(mode) {
 }
 
 function showIntro(sc, mode, no) {
+  if (mode === 'practice' && !premiumUnlocked() && (isHard(sc) || isCig(sc))) { renderPaywall(isHard(sc) ? 'saban' : 'cignetti'); return; }
   const off = T_(sc.off), def = T_(sc.dfn), gl = gameLabel(sc);
   const st = { s: sc.os - sc.ds };
   if (mode === 'practice') $('#subline').textContent = `Practice · ${gl.when}`;
@@ -1309,7 +1310,7 @@ function showPractice() {
   app.innerHTML = `<div class="filters">
       <input id="pq" type="search" placeholder="Search a coach or school" value="${esc(pf.q)}" aria-label="Search a coach or school">
       <select id="py" aria-label="Season"><option value="">All seasons</option>${years}</select>
-      <select id="pk" aria-label="Situation"><option value="">Any situation</option><option value="tied" ${pf.kind === 'tied' ? 'selected' : ''}>Tied</option><option value="fg" ${pf.kind === 'fg' ? 'selected' : ''}>Down 1–3</option><option value="td" ${pf.kind === 'td' ? 'selected' : ''}>Down 4–8</option><option value="two" ${pf.kind === 'two' ? 'selected' : ''}>Down 9+ (two scores)</option><option value="saban" ${pf.kind === 'saban' ? 'selected' : ''}>Saban-hard (≤${Math.round(HARD_WP * 100)}% to start)</option><option value="cignetti" ${pf.kind === 'cignetti' ? 'selected' : ''}>Cignetti-hard (${Math.round(HARD_WP * 100)}–${Math.round(CIG_WP * 100)}% to start)</option></select>
+      <select id="pk" aria-label="Situation"><option value="">Any situation</option><option value="tied" ${pf.kind === 'tied' ? 'selected' : ''}>Tied</option><option value="fg" ${pf.kind === 'fg' ? 'selected' : ''}>Down 1–3</option><option value="td" ${pf.kind === 'td' ? 'selected' : ''}>Down 4–8</option>${premiumUnlocked() ? `<option value="two" ${pf.kind === 'two' ? 'selected' : ''}>Down 9+ (two scores)</option><option value="saban" ${pf.kind === 'saban' ? 'selected' : ''}>Saban-hard (≤${Math.round(HARD_WP * 100)}% to start)</option><option value="cignetti" ${pf.kind === 'cignetti' ? 'selected' : ''}>Cignetti-hard (${Math.round(HARD_WP * 100)}–${Math.round(CIG_WP * 100)}% to start)</option>` : ''}</select>${premiumUnlocked() ? '' : '<span class="note" style="align-self:center">Hard drives are in Saban and Cignetti mode.</span>'}
       <button class="cta ghost" id="rnd" style="flex:0 0 auto;width:auto">Random drive</button>
     </div><div id="plist"></div>`;
   const draw = () => {
@@ -1324,6 +1325,7 @@ function showPractice() {
       if (pf.kind === 'saban' && !isHard(s)) return false;
       if (pf.kind === 'cignetti' && !isCig(s)) return false;
       if (!pf.kind && d >= 9) return false;
+      if (!premiumUnlocked() && (isHard(s) || isCig(s))) return false; // the hard drives are the paid part
       if (!q) return true;
       return (s.coach + ' ' + s.dcoach + ' ' + T_(s.off).school + ' ' + T_(s.dfn).school).toLowerCase().includes(q);
     }).sort((a, b) => b.date.localeCompare(a.date));
@@ -1338,7 +1340,7 @@ function showPractice() {
   $('#pq').oninput = e => { pf.q = e.target.value; draw(); };
   $('#py').onchange = e => { pf.year = e.target.value; draw(); };
   $('#pk').onchange = e => { pf.kind = e.target.value; draw(); };
-  $('#rnd').onclick = () => showIntro(D.scen[Math.floor(rand() * D.scen.length)], 'practice');
+  $('#rnd').onclick = () => { const pool = premiumUnlocked() ? D.scen : D.std.filter(s => !isHard(s) && !isCig(s)); showIntro(pool[Math.floor(rand() * pool.length)], 'practice'); };
   draw();
 }
 
