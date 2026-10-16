@@ -147,7 +147,8 @@ function outcomes(st, id, tgt, mods = {}) {
     const pSack = clamp((dg === 'L' ? D.rates.sackL : lgSack) * depthF * Math.sqrt((L.qb.sack || lgSack) / lgSack) * (1 + S.drat.dp), .01, .22);
     const pInt = clamp(lgInt * intF * Math.sqrt((L.qb.int || lgInt) / lgInt) * (1 + 2 * S.drat.dp), .004, .12) * (1 - pSack);
     const [sk, srows] = pool('sack_' + z, 'sack_o');
-    addPool(sk, srows, 0, pSack);
+    addPool(sk, srows, 0, pSack * 0.9);
+    out.push({ p: pSack * 0.1, y: -8, f: 8 | 16, src: null, strip: true }); // strip sack, defense recovers
     const ints = D.pools.int;
     const dtd = ints.filter(r => r[1] & 32).length / ints.length;
     out.push({ p: pInt * (1 - dtd), y: 0, f: 8, src: null, int: true });
@@ -326,6 +327,7 @@ function fieldSVG(st, sc, anim) {
     // formation (offense faces right)
     const L = sc.lineup, col = off.color, alt = off.alt;
     const dot = (x, y, num, fill, stroke, r = 15, attr = '') => `<g ${attr}><circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="3"/><text x="${x}" y="${y + 1}" fill="${stroke}" font-family="Saira Condensed, sans-serif" font-weight="700" font-size="16" text-anchor="middle" dominant-baseline="middle">${esc(num)}</text></g>`;
+    s += '<g id="formation">';
     {
       [-60, -30, 0, 30, 60].forEach(dy => { s += dot(los - 18, 266 + dy, '', col, alt, 13); });
       const picking = G.picking === 'pass';
@@ -338,6 +340,7 @@ function fieldSVG(st, sc, anim) {
       [[18, 236], [18, 266], [18, 296], [18, 206], [60, 230], [60, 300], [55, 150], [40, 60], [40, 470], [150, 190], [150, 350]]
         .forEach(([dx, y]) => { s += `<circle cx="${los + dx}" cy="${y}" r="11" fill="${da}" stroke="${dc}" stroke-width="4" opacity=".9"/>`; });
     }
+    s += '</g>';
   }
   if (anim) {
     const from = X(anim.from), to = X(anim.to);
@@ -482,6 +485,7 @@ function resultHTML() {
 function renderSide() {
   const side = $('#side'), st = G.st, sc = G.sc;
   if (G.done) return;
+  if (G.animating) { side.innerHTML = `<div class="snapping"><span class="spin"></span> Snap…</div><div class="note">Tap the field to skip.</div>`; return; }
   let h = resultHTML();
   if (G.picking === 'pass') {
     const recs = receivers(sc);
@@ -560,6 +564,7 @@ function narrate(id, o, r, tgt, sc, mods = {}) {
   if (o.punt) return 'Punt away.';
   if (o.spike) return `${qb} spikes it. Clock stopped.`;
   if (o.kneel) return `${qb} takes a knee.`;
+  if (o.strip) return `${qb} is strip-sacked and the defense recovers.`;
   if (o.f & 16) return `${qb} is sacked for a loss of ${yds(o.y)}.`;
   if (o.int) return (o.f & 32) ? `${qb} is picked off and it's returned for a touchdown.` : `${qb}'s pass for ${to} is intercepted.`;
   if (o.fumble) return `${rb} fumbles and the defense recovers.`;
@@ -611,23 +616,38 @@ function runPlay(id, tgt, mods = {}) {
   const coachCall = G.st.snaps === 0 ? coachOpening(sc) : null;
   const wpAfter = r.end ? endValue(n, r.end) : contValue(n);
   let badge = r.td ? 'TD' : o.fg ? (o.made ? 'FG' : 'NO') : (o.f & 8) ? 'TO' : o.spike ? 'SPK' : (r.incomplete ? 'INC' : (r.yards > 0 ? '+' : '') + r.yards);
-  let title = r.td ? 'Touchdown' : o.fg ? (o.made ? 'Field goal good' : 'Field goal missed') : o.int ? 'Intercepted' : o.fumble ? 'Fumble' : (o.f & 16) ? 'Sacked' : o.spike ? 'Spiked' : r.incomplete ? 'Incomplete' : r.first ? 'First down' : (r.end?.why || (r.yards === 0 ? 'No gain' : r.yards < 0 ? `Loss of ${-r.yards}` : `${r.yards} yard${r.yards === 1 ? '' : 's'}`));
-  if (r.end?.kind === 'opp' && !o.int && !o.fumble && !o.fg) title = r.end.why;
+  let title = r.td ? 'Touchdown' : o.fg ? (o.made ? 'Field goal good' : 'Field goal missed') : o.int ? 'Intercepted' : o.strip ? 'Strip sack' : o.fumble ? 'Fumble' : (o.f & 16) ? 'Sacked' : o.spike ? 'Spiked' : r.incomplete ? 'Incomplete' : r.first ? 'First down' : (r.end?.why || (r.yards === 0 ? 'No gain' : r.yards < 0 ? `Loss of ${-r.yards}` : `${r.yards} yard${r.yards === 1 ? '' : 's'}`));
+  if (r.end?.kind === 'opp' && !o.int && !o.fumble && !o.strip && !o.fg) title = r.end.why;
   if (!r.end && !o.spike) title += n.pending > 0 ? ', clock running' : ', clock stopped';
   const g = o.src ? D.games[o.src[3]] : null;
-  G.last = {
+  const newLast = {
     id, tgt, opts, coachCall, grade, wpBefore, wpAfter, text, title, badge,
     good: r.td || (o.fg && o.made) || r.first, bad: !!(o.f & 8) || (o.fg && !o.made) || (o.f & 16),
     real: o.src && o.src[4] ? `${o.src[4]} (${T_(g[4]).school} ${g[5] ? 'vs' : 'at'} ${T_(g[3]).school}, ${g[0]})` : null,
   };
   const isPass = id.startsWith('p_') || id === 'hail';
-  G.anim = (o.fg || o.punt || o.spike) ? null : { from: st.ytg, to: clamp(n.ytg || (st.ytg - r.yards), 0, 100), pass: isPass && !(o.f & 16), high: CALLS[id].depth === 'deep' || id === 'hail', y: isPass && (o.f & 1) ? (CALLS[id].side === 'mid' ? 266 : (tgt && tgt.y > 266 ? 420 : 110)) : 266 };
-  if (isPass && !(o.f & 1) && !(o.f & 16)) G.anim.to = st.ytg;
-  G.st = n; G.picking = null;
-  if (r.end) {
-    G.busy = true; renderPlay();
-    setTimeout(() => { G.busy = false; finish(r.end, n); }, 1400);
-  } else renderPlay();
+  G.last = null; G.anim = null; G.picking = null; G.pickerSlot = null;
+  // Animate the snap from the pre-snap state, then land the result
+  const srcText = o.src && o.src[4] ? o.src[4].toLowerCase() : '';
+  const finalYtg = r.end?.kind === 'opp' ? clamp(100 - r.end.oppYtg, 0, 100) : n.ytg;
+  const spec = {
+    kind: o.fg ? 'fg' : o.punt ? 'punt' : o.spike ? 'spike' : o.kneel ? 'kneel' : isPass ? 'pass' : 'run',
+    los: 100 + (100 - st.ytg) * 10, routes: ROUTES, recs: receivers(sc).map(x => ({ ...x, route: routeFor(x) })),
+    qb: sc.lineup.qb, rb: sc.lineup.rb, offColor: T_(sc.off).color, offAlt: T_(sc.off).alt, defColor: T_(sc.dfn).color, defAlt: T_(sc.dfn).alt,
+    targetSlot: tgt ? tgt.slot : null, rbTarget: id === 'p_rb', depth: CALLS[id].depth || (id === 'p_rb' ? 'short' : null), hail: id === 'hail',
+    pa: !!mods.pa, roll: !!mods.roll, sack: !!(o.f & 16), strip: !!o.strip, int: !!o.int, intTd: !!(o.f & 32), complete: !!(o.f & 1),
+    td: r.td, oob: r.oob, yards: r.yards, first: r.first, finalYtg: r.td ? 0 : finalYtg, fumble: !!o.fumble,
+    outside: id === 'r_out', qbRun: id === 'r_qb' || id === 'r_sneak', sneak: id === 'r_sneak', made: !!o.made,
+    dropped: !(o.f & 1) && !o.int && srcText.includes('drop'), pbu: srcText.includes('broken up'), contested: srcText.includes('contested'),
+  };
+  G.busy = true; G.animating = true; G.st = st; renderPlay();
+  const box = $('#field');
+  const run = spec.kind === 'punt' ? Promise.resolve() : PlayAnim.play(box, spec);
+  run.then(() => {
+    G.animating = false; G.busy = false; G.st = n; G.last = newLast;
+    if (r.end) { renderPlay(); G.busy = true; setTimeout(() => { G.busy = false; finish(r.end, n); }, 900); }
+    else renderPlay();
+  });
 }
 
 // ---------- end of drive ----------
