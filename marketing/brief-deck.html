@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NCAA Two-Minute Drill · Marketing brief</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&display=swap">
+<style>
+  @page { size: 1280px 720px; margin: 0; }
+  :root { --night: #0c1420; --panel: #132031; --panel2: #1a2a3f; --line: #2a3d57; --chalk: #eef2f6; --muted: #8ea0b8; --amber: #f3b23c; --turf: #2f6b3a; --good: #4cc27a; --warn: #e9b949; --bad: #e2574c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--night); color: var(--chalk); font-family: "Barlow", "Segoe UI", system-ui, sans-serif; }
+  .slide { width: 1280px; height: 720px; position: relative; overflow: hidden; page-break-after: always; break-after: page; padding: 56px 72px 48px; display: grid; grid-template-rows: auto 1fr auto; gap: 18px; background: var(--night); }
+  .slide:last-child { page-break-after: auto; }
+  .eyebrow { font-family: "Saira Condensed", sans-serif; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--amber); font-size: 16px; }
+  h1 { font-family: "Saira Condensed", sans-serif; font-weight: 800; text-transform: uppercase; font-size: 54px; line-height: .95; margin: 6px 0 0; letter-spacing: .01em; }
+  h1 small { display: block; font-size: 22px; color: var(--muted); letter-spacing: .08em; margin-top: 10px; font-weight: 600; }
+  h2 { font-family: "Saira Condensed", sans-serif; font-weight: 800; text-transform: uppercase; font-size: 40px; line-height: 1; margin: 4px 0 0; }
+  .foot { display: flex; justify-content: space-between; align-items: center; font-family: "Saira Condensed", sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .foot b { color: var(--amber); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; min-height: 0; }
+  .cols.wide { grid-template-columns: 1.25fr 1fr; }
+  .cols.img-right { grid-template-columns: 1fr 1.1fr; }
+  p, li { font-size: 19px; line-height: 1.4; margin: 0; }
+  ul { margin: 0; padding-left: 22px; display: grid; gap: 7px; }
+  ol { margin: 0; padding-left: 24px; display: grid; gap: 6px; }
+  .shot { width: 100%; border-radius: 10px; border: 1px solid var(--line); display: block; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card h3 { font-family: "Saira Condensed", sans-serif; letter-spacing: .1em; text-transform: uppercase; font-size: 15px; color: var(--muted); margin: 0 0 6px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .quote { font-size: 21px; font-style: italic; color: var(--chalk); border-left: 3px solid var(--amber); padding-left: 14px; }
+  .quotes { display: grid; gap: 12px; }
+  .big { font-family: "Saira Condensed", sans-serif; font-weight: 800; font-size: 44px; line-height: 1; color: var(--amber); }
+  .stat { display: grid; gap: 2px; }
+  .stat span { font-size: 14px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; font-family: "Saira Condensed", sans-serif; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .title { grid-template-rows: 1fr auto; }
+  .title .hero { display: grid; grid-template-columns: 1fr 300px; align-items: center; gap: 40px; }
+  .title img { width: 260px; height: 260px; border-radius: 48px; border: 2px solid var(--line); justify-self: end; }
+  .title h1 { font-size: 84px; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .day { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-height: 150px; font-size: 15px; line-height: 1.35; }
+  .day b { display: block; font-family: "Saira Condensed", sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--amber); font-size: 14px; margin-bottom: 6px; }
+  .day.hot { border-color: var(--amber); }
+  .never li { color: var(--chalk); }
+  .never li::marker { color: var(--bad); }
+  .tag { display: inline-block; font-family: "Saira Condensed", sans-serif; letter-spacing: .1em; text-transform: uppercase; font-size: 13px; padding: 2px 8px; border-radius: 4px; background: var(--panel2); color: var(--muted); margin-right: 6px; }
+  .links p { font-size: 20px; }
+  .links b { font-family: "Saira Condensed", sans-serif; letter-spacing: .06em; color: var(--amber); }
+</style>
+</head>
+<body>
+
+<section class="slide title">
+  <div class="hero">
+    <div>
+      <div class="eyebrow">Marketing brief · for Grok and anyone else writing for us</div>
+      <h1>NCAA Two-Minute<br>Drill<small>Call a real college drive. Beat the coach.</small></h1>
+      <p style="margin-top:22px;max-width:620px">A free daily game at <b>ncaa2mindrill.com</b>. One real late-game FBS drive a day, every snap animated, scored against the real head coach. Saban mode and Cignetti mode go in the app for one $0.99 unlock. Fan-made; not affiliated with anyone.</p>
+    </div>
+    <img src="app-icon.png" alt="App icon">
+  </div>
+  <div class="foot"><span>ncaa2mindrill.com</span><span>October 2026 · <b>brief v2</b></span></div>
+</section>
+
+<section class="slide">
+  <div><div class="eyebrow">01 · The product</div><h2>One drive a day. You call every snap.</h2></div>
+  <div class="cols img-right">
+    <div style="display:grid;gap:12px">
+      <div class="stats">
+        <div class="stat"><div class="big">822</div><span>real drives</span></div>
+        <div class="stat"><div class="big">3</div><span>seasons, 2023–25</span></div>
+        <div class="stat"><div class="big">19</div><span>routes per receiver</span></div>
+        <div class="stat"><div class="big">8</div><span>run concepts</span></div>
+      </div>
+      <ul>
+        <li>Real score, clock, field position, timeouts and players from the actual game.</li>
+        <li>Runs: inside zone, power, counter, outside zone, toss, draw, keeper, sneak — left or right, or <b>tap the hole</b> on the field.</li>
+        <li>Passes: full route tree, one-tap concepts (Four Verts, Mesh, Smash, Flood…), play action, roll-outs, screens, Hail Marys.</li>
+        <li>Clock: spike, kneel, timeouts, tempo (hustle / neutral / milk it). The defense shows a look before every snap.</li>
+        <li>Every result is a <b>real college snap</b> of that type; penalties, scrambles, strip sacks and kicker quality all come from real rates.</li>
+      </ul>
+    </div>
+    <div><img class="shot" src="field-pass-routes.png" alt="Pass screen with routes drawn on the field"><p style="font-size:15px;color:var(--muted);margin-top:8px">The pass screen: a route for every receiver, the defense's look already shown (here: blitz, linebacker creeping right).</p></div>
+  </div>
+  <div class="foot"><span>Product</span><span>ncaa2mindrill.com</span></div>
+</section>
+
+<section class="slide">
+  <div><div class="eyebrow">02 · Why people share it</div><h2>You are scored against the real coach</h2></div>
+  <div class="cols">
+    <div><img class="shot" src="share-card.png" alt="Share card"><p style="font-size:15px;color:var(--muted);margin-top:8px">Every result makes this 1200×630 card, sized for X, iMessage and group chats.</p></div>
+    <div style="display:grid;gap:12px">
+      <div class="card"><h3>The verdict</h3><p>Your win chance after your drive vs. the coach's after his. "I beat Steve Sarkisian 88%–4%" is the hook.</p></div>
+      <div class="card"><h3>Snap by snap</h3><p>Your calls next to the coach's actual calls, each graded 🟩🟨🟥 against the best option on the board.</p></div>
+      <div class="card"><h3>Percentile</h3><p>300 simulated college play-callers replay the same drive. You get a rank and a dry line to go with it.</p></div>
+      <div class="card"><h3>"You call it like…"</h3><p>Your pass rate overall, on early downs and on passing downs, matched to a real FBS head coach's tendencies.</p></div>
+    </div>
+  </div>
+  <div class="foot"><span>Shareability</span><span>ncaa2mindrill.com</span></div>
+</section>
+
+<section class="slide">
+  <div><div class="eyebrow">03 · It moves</div><h2>Every snap is animated, with popups</h2></div>
+  <div class="cols img-right">
+    <div style="display:grid;gap:12px">
+      <ul>
+        <li>Receivers run the routes you called; corners mirror them; safeties play their shell; linebackers drop then pursue.</li>
+        <li>The ball flies with a real arc and lands where the pass was actually caught; the catch becomes run-after-catch.</li>
+        <li>Backs hit the hole you tapped; the defense converges on the real spot of the tackle. Tosses pitch, draws fake, counters cut back.</li>
+        <li>Popups on the moment: <span class="tag">Intercepted!</span><span class="tag">Pick six!</span><span class="tag">Strip sack!</span><span class="tag">Mossed him!</span><span class="tag">Juked him!</span><span class="tag">Tackle for loss!</span><span class="tag">House call!</span><span class="tag">Flag</span></li>
+        <li>Three to five seconds a play. Tap the field to skip.</li>
+      </ul>
+    </div>
+    <div><img class="shot" src="field-run-aim.png" alt="Run aim point on the field"><p style="font-size:15px;color:var(--muted);margin-top:8px">The run game: tap where you want him to hit it. The crosshair is the hole; the concept is how he gets there.</p></div>
+  </div>
+  <div class="foot"><span>Animation</span><span>ncaa2mindrill.com</span></div>
+</section>
+
+<section class="slide">
+  <div><div class="eyebrow">04 · Voice</div><h2>Dry. Literal. Deadpan.</h2></div>
+  <div class="cols">
+    <div class="quotes">
+      <div class="quote">"The offensive line would like to be excluded from this narrative."</div>
+      <div class="quote">"Incomplete. The clock stops for this, per rule 3-3-2, roughly."</div>
+      <div class="quote">"He ran that one straight into a meeting."</div>
+      <div class="quote">"Three points. He will be left alone now, as kickers prefer."</div>
+      <div class="quote">"You out-called James Franklin. He has a staff. You have a browser."</div>
+    </div>
+    <div style="display:grid;gap:12px">
+      <div class="card"><h3>Do</h3><ul><li>Short sentences. One idea per post.</li><li>Specific over clever. Real numbers only.</li><li>Jokes land on the user, the moment, or football itself.</li></ul></div>
+      <div class="card"><h3>Don't</h3><ul class="never"><li>Dunk on a named coach or player. We compare; we don't pile on.</li><li>Hype, exclamation points, "trending", fake quotes or stats.</li><li>Emoji in body copy (grade squares in share text are the one exception).</li></ul></div>
+    </div>
+  </div>
+  <div class="foot"><span>Voice</span><span>ncaa2mindrill.com</span></div>
+</section>
+
+<section class="slide">
+  <div><div class="eyebrow">05 · Audiences and channels</div><h2>Where college football people already are</h2></div>
+  <div class="grid3">
+    <div class="card"><h3>CFB Twitter / X</h3><p>The core. Reply under viral late-game clips within the hour: "we have that drive, go call it better" + link. Saturday nights and Sunday mornings.</p></div>
+    <div class="card"><h3>r/CFB</h3><p>One honest builder post. Then show up in game-thread aftermath with the exact drive and the coach's real calls. Be a person, not a brand.</p></div>
+    <div class="card"><h3>Team subreddits &amp; forums</h3><p>Post the day a drive from their team is the daily. Lead with the situation, not the product.</p></div>
+    <div class="card"><h3>Group chats</h3><p>The share card is the product here. Make it the thing people screenshot and argue about.</p></div>
+    <div class="card"><h3>Daily-puzzle people</h3><p>Wordle, Connections, Immaculate Grid crowd. "A daily for football people."</p></div>
+    <div class="card"><h3>Hashtags &amp; tags</h3><p>#CFB, #CollegeFootball, the day's team hashtags. Tag official team accounts only about their actual game. Never tag coaches.</p></div>
+  </div>
+  <div class="foot"><span>Audiences</span><span>ncaa2mindrill.com</span></div>
+</section>
+
+<section class="slide">
+  <div><div class="eyebrow">06 · What to produce</div><h2>The deliverables</h2></div>
+  <div class="cols">
+    <ol>
+      <li><b>30 daily X templates</b> under 240 chars, slots for <code>{away} at {home}, {year}</code>, <code>{coach}</code>, <code>{down by N}, {clock} left</code>. Half one-liners, half questions.</li>
+      <li><b>10 reply templates</b> for viral late-game clips. Helpful fan; the link once.</li>
+      <li><b>One r/CFB launch post</b>, 200–300 words, as the builder, honest caveats (it's a model; players rated by season EPA).</li>
+      <li><b>An 8-post X launch thread</b>: what it is, a snap, the animation, the coach comparison, the percentile, "you call it like", Saban mode, the link.</li>
+    </ol>
+    <ol start="5">
+      <li><b>App store copy</b>: App Store subtitle (30), promo text (170), description (first 3 lines sell), 5 keywords; Google Play short description (80).</li>
+      <li><b>15 share-card captions</b> across beat / even / lost. Backbone: "I beat {coach} {me}–{coach}".</li>
+      <li><b>A 4-week in-season calendar</b> (next slide is the shape).</li>
+      <li><b>Five unexpected-but-welcome ideas</b> in the voice: weekly Coaches-table post, "which coach do you call like" hook, Saban-mode survivors roll call…</li>
+    </ol>
+  </div>
+  <div class="foot"><span>Deliverables</span><span>ncaa2mindrill.com</span></div>
+</section>
+
+<section class="slide">
+  <div><div class="eyebrow">07 · The week</div><h2>Built around the college football week</h2></div>
+  <div class="cal">
+    <div class="day"><b>Mon</b>"Yesterday's wildest finish is tomorrow's daily." Tease the matchup.</div>
+    <div class="day hot"><b>Tue</b>Last weekend's drive is the daily. Post the situation as a question. Team-subreddit post.</div>
+    <div class="day"><b>Wed</b>Coaches table: who's added the most win chance late. One dry stat.</div>
+    <div class="day"><b>Thu</b>"You call it like…" hook: which coach do you resemble? Reply-bait.</div>
+    <div class="day"><b>Fri</b>Saban mode survivors roll call. Share-card screenshots from the week.</div>
+    <div class="day hot"><b>Sat</b>Live. Reply under late-game clips within the hour. No scheduled posts.</div>
+    <div class="day hot"><b>Sun</b>"Call it better" recap of Saturday's drives that went wrong. Link.</div>
+  </div>
+  <p style="color:var(--muted);font-size:16px">Offseason: lean on Practice (822 drives), the Coaches table, and throwback drives ("two years ago today"). App launch week replaces the calendar with the launch thread, the r/CFB post, and daily replies.</p>
+  <div class="foot"><span>Calendar</span><span>ncaa2mindrill.com</span></div>
+</section>
+
+<section class="slide">
+  <div><div class="eyebrow">08 · Links and rules</div><h2>Everything you can point to</h2></div>
+  <div class="cols links">
+    <div style="display:grid;gap:14px">
+      <p><b>Game</b> · https://ncaa2mindrill.com</p>
+      <p><b>App page</b> · https://ncaa2mindrill.com/app</p>
+      <p><b>Privacy</b> · https://ncaa2mindrill.com/privacy.html</p>
+      <p><b>Store links</b> · [add when approved]</p>
+      <p><b>App launch</b> · [date] · iOS + Android · hard modes are one $0.99 unlock; the website stays free</p>
+      <p><b>Data</b> · cfbfastR / SportsDataverse play-by-play, 2023–2025 FBS</p>
+    </div>
+    <div class="card"><h3>Never</h3><ul class="never">
+      <li>Claim affiliation, endorsement, or "official" anything.</li>
+      <li>Invent user counts, ratings, press mentions or quotes.</li>
+      <li>Buy, bot, or fake engagement. Real players, real results.</li>
+      <li>Use real player names in jokes. Coach names appear only in the comparison framing.</li>
+      <li>Ask for anything that isn't in this brief without asking first.</li>
+    </ul></div>
+  </div>
+  <div class="foot"><span>Links</span><span>ncaa2mindrill.com</span></div>
+</section>
+
+<script>
+  // ?s=N shows one slide on its own (used to screenshot each page for checking)
+  const m = location.search.match(/[?&]s=(\d+)/);
+  if (m) document.querySelectorAll('.slide').forEach((el, i) => { if (i !== +m[1]) el.style.display = 'none'; });
+</script>
+</body>
+</html>
