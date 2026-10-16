@@ -72,6 +72,37 @@ export default {
         if (hit) return json({ ok: true, code: await makeCode(env, hit.id) });
         return json({ ok: false, reason: 'not_found' });
       }
+      // ---- traffic tally (D1). One row per browser per day, counted up; nothing personal is stored.
+      if (url.pathname === '/hit' && env.DB) {
+        const token = (url.searchParams.get('token') || '').slice(0, 40), day = new Date().toISOString().slice(0, 10);
+        if (token.length < 8) return json({ ok: false }, 400);
+        await env.DB.prepare('INSERT INTO hits (day, token, n, ts) VALUES (?1, ?2, 1, ?3) ON CONFLICT(day, token) DO UPDATE SET n = n + 1, ts = ?3').bind(day, token, Date.now()).run();
+        return json({ ok: true });
+      }
+      if (url.pathname === '/unlocked' && env.DB) {
+        const code = (url.searchParams.get('code') || '').slice(0, 80), src = (url.searchParams.get('src') || 'web').slice(0, 12);
+        if (code.length < 8) return json({ ok: false }, 400);
+        await env.DB.prepare('INSERT OR IGNORE INTO unlocks (code, src, ts) VALUES (?1, ?2, ?3)').bind(code, src, Date.now()).run();
+        return json({ ok: true });
+      }
+      if (url.pathname === '/stats' && env.DB) {
+        const today = new Date().toISOString().slice(0, 10), week = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
+        const q = async (sql, ...a) => (await env.DB.prepare(sql).bind(...a).first()) || {};
+        const visits = {
+          today: await q('SELECT COALESCE(SUM(n),0) AS v, COUNT(*) AS u FROM hits WHERE day = ?1', today),
+          week: await q('SELECT COALESCE(SUM(n),0) AS v, COUNT(DISTINCT token) AS u FROM hits WHERE day >= ?1', week),
+          all: await q('SELECT COALESCE(SUM(n),0) AS v, COUNT(DISTINCT token) AS u FROM hits'),
+        };
+        const byDay = await env.DB.prepare('SELECT day, SUM(n) AS v, COUNT(*) AS u FROM hits WHERE day >= ?1 GROUP BY day ORDER BY day').bind(new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10)).all();
+        const unlocks = { today: (await q('SELECT COUNT(*) AS c FROM unlocks WHERE ts >= ?1', Date.parse(today))).c || 0, all: (await q('SELECT COUNT(*) AS c FROM unlocks')).c || 0 };
+        const plays = { today: (await q('SELECT COUNT(*) AS c FROM results WHERE ts >= ?1', Date.parse(today))).c || 0, all: (await q('SELECT COUNT(*) AS c FROM results')).c || 0 };
+        let stripe_paid = null, stripe_error = null;
+        try { // confirmed payments straight from Stripe, when the restricted key is present
+          const s = await stripe(env, '/checkout/sessions?limit=100&status=complete');
+          stripe_paid = (s.data || []).filter(x => x.payment_status === 'paid').length; if (s.has_more) stripe_paid = stripe_paid + '+';
+        } catch (e) { stripe_error = String(e && e.message || e); }
+        return json({ ok: true, today, visits, byDay: (byDay && byDay.results) || [], unlocks, plays, stripe_paid, stripe_error });
+      }
       // ---- daily leaderboard (D1). One row per finished daily drive; the site submits anonymously with a per-browser token.
       if (url.pathname === '/lb/submit' && env.DB) {
         const day = parseInt(url.searchParams.get('day') || '', 10), mode = url.searchParams.get('mode') || '', wp = parseFloat(url.searchParams.get('wp') || '');

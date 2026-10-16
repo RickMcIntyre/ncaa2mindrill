@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Tally · NCAA Two-Minute Drill</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;700;800&family=Barlow:wght@400;600&display=swap">
+<style>
+  :root { --night: #0c1420; --panel: #132031; --line: #2a3d57; --chalk: #eef2f6; --muted: #8ea0b8; --amber: #f3b23c; --good: #4cc27a; --bad: #e2574c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--night); color: var(--chalk); font-family: "Barlow", "Segoe UI", system-ui, sans-serif; padding: 24px 16px 48px; }
+  main { max-width: 1000px; margin: 0 auto; display: grid; gap: 18px; }
+  h1 { font-family: "Saira Condensed", sans-serif; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; margin: 0; font-size: 34px; }
+  .sub { color: var(--muted); font-size: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 4px; }
+  .tile .k { font-family: "Saira Condensed", sans-serif; letter-spacing: .12em; text-transform: uppercase; font-size: 12px; color: var(--muted); }
+  .tile .v { font-family: "Saira Condensed", sans-serif; font-weight: 800; font-size: 44px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .tile .v.money { color: var(--amber); }
+  .tile .s { font-size: 13px; color: var(--muted); }
+  .chart { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .bars { display: flex; align-items: flex-end; gap: 4px; height: 120px; margin-top: 8px; }
+  .bars i { flex: 1; background: var(--amber); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; }
+  .bars i:hover::after { content: attr(data-t); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: var(--night); border: 1px solid var(--line); padding: 2px 6px; font-size: 12px; white-space: nowrap; border-radius: 4px; }
+  .foot { color: var(--muted); font-size: 13px; }
+  .err { color: var(--bad); }
+  a { color: var(--amber); }
+</style>
+</head>
+<body>
+<main>
+  <div><h1>Tally</h1><div class="sub" id="sub">Loading…</div></div>
+  <div class="grid" id="tiles"></div>
+  <div class="chart"><div class="tile" style="padding:0;border:0;background:none"><div class="k">Visits, last 30 days</div></div><div class="bars" id="bars"></div></div>
+  <div class="foot">Visits are page loads; "people" is distinct browsers (a random token, nothing personal). Unlocks are what browsers reported after a Stripe return; "Stripe-confirmed" comes straight from Stripe once the worker has the key. Refreshes every minute. <a href="/">Back to the game</a></div>
+</main>
+<script>
+  const API = 'https://ncaa2mindrill-unlock.unlock-worker.workers.dev';
+  const n = x => (x == null ? '–' : typeof x === 'number' ? x.toLocaleString() : x);
+  async function load() {
+    try {
+      const r = await fetch(API + '/stats', { cache: 'no-store' }); const d = await r.json();
+      if (!d.ok) throw new Error('stats not ok');
+      document.getElementById('sub').textContent = `As of ${new Date().toLocaleString()} · UTC day ${d.today}`;
+      const t = [
+        ['Visits today', d.visits.today.v, `${n(d.visits.today.u)} people`],
+        ['Visits, 7 days', d.visits.week.v, `${n(d.visits.week.u)} people`],
+        ['Visits, all time', d.visits.all.v, `${n(d.visits.all.u)} people`],
+        ['Daily drives played today', d.plays.today, `${n(d.plays.all)} all time`],
+        ['Unlocks today', d.unlocks.today, `${n(d.unlocks.all)} all time (browser-reported)`],
+        ['Stripe-confirmed payments', d.stripe_paid, d.stripe_error ? `Stripe key not set on the worker yet (${d.stripe_error})` : 'paid checkouts, last 100'],
+      ];
+      document.getElementById('tiles').innerHTML = t.map(([k, v, s], i) => `<div class="tile"><div class="k">${k}</div><div class="v ${i >= 4 ? 'money' : ''}">${n(v)}</div><div class="s ${i === 5 && d.stripe_error ? 'err' : ''}">${s}</div></div>`).join('');
+      const days = []; for (let i = 29; i >= 0; i--) days.push(new Date(Date.now() - i * 864e5).toISOString().slice(0, 10));
+      const m = Object.fromEntries((d.byDay || []).map(x => [x.day, x])); const mx = Math.max(1, ...days.map(x => (m[x] || {}).v || 0));
+      document.getElementById('bars').innerHTML = days.map(x => { const r = m[x] || { v: 0, u: 0 }; return `<i style="height:${Math.max(2, r.v / mx * 100)}%" data-t="${x}: ${r.v} visits, ${r.u} people"></i>`; }).join('');
+    } catch (e) { document.getElementById('sub').innerHTML = `<span class="err">Could not load stats: ${e.message}</span>`; }
+  }
+  load(); setInterval(load, 60000);
+</script>
+</body>
+</html>

@@ -479,7 +479,15 @@ function premiumUnlocked() {
   if (window.Native && window.Native.isNative) return !!window.Native.entitled;
   return WEB_UNLOCKED || !!webUnlockCode();
 }
-function storeUnlock(code) { try { localStorage.setItem(UNLOCK_KEY, code); } catch { /* storage unavailable: unlocked for this visit only */ } }
+function storeUnlock(code) {
+  try { localStorage.setItem(UNLOCK_KEY, code); } catch { /* storage unavailable: unlocked for this visit only */ }
+  beacon('/unlocked', { code, src: window.Native && window.Native.isNative ? 'app' : 'web' });
+}
+// a fire-and-forget ping to the worker (visit tally, unlock tally); never blocks the game
+function beacon(path, params) {
+  if (UNLOCK_API.includes('REPLACE_ME')) return;
+  try { const u = new URL(path, UNLOCK_API); for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v); fetch(u, { keepalive: true, mode: 'cors', cache: 'no-store' }).catch(() => {}); } catch { /* ignore */ }
+}
 async function unlockApi(path, params) {
   const u = new URL(path, UNLOCK_API); for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
   const r = await fetch(u, { cache: 'no-store' });
@@ -1450,6 +1458,7 @@ fetch('data.json').then(r => r.json()).then(d => {
   D.cig = D.scen.filter(isCig).sort((a, b) => a.id - b.id);
   if (window.Native && window.Native.init) window.Native.init().then(() => { if (isHardMode(tab)) setTab(tab); }).catch(() => {});
   let seen = false; try { seen = localStorage.getItem('cfb2md:seen') === '1'; localStorage.setItem('cfb2md:seen', '1'); } catch { seen = true; }
+  beacon('/hit', { token: playerToken() });
   const back = location.search.includes('unlock=');
   const startTab = location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : 'daily';
   if (back) claimFromUrl().then(() => setTab(startTab)); else setTab(startTab);
