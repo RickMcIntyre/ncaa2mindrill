@@ -113,23 +113,54 @@
     if (inside[0]) W.cover.set(W.nb, inside[0]);
     if (inside[1]) W.cover.set(look === 'loaded' ? W.s[0] : W.lb[1], inside[1]);
     W.look = look;
+    trickFormation(W, spec);
     return W;
+  }
+  // Trick plays change the formation before the snap: a wildcat or Philly Special splits the quarterback out and
+  // puts the back under center, a jet sweep starts a receiver in motion, and the fake kicks line up as kicks.
+  function trickFormation(W, spec) {
+    const T = spec.trick; if (!T) return;
+    const los = W.los, side = spec.side || 1, q = W.qb, rb = W.rb;
+    if (T === 't_wildcat' || T === 't_philly') {
+      const P = T === 't_philly' ? (W.recs.find(a => a.slot === spec.passerSlot) || W.recs.find(a => a.pos !== 'RB')) : null;
+      const s = P ? (Math.sign(P.y - MID) || 1) : -1;
+      q.x = los - 12; q.y = s > 0 ? BOTY - 22 : TOPY + 22; W.qbWide = true;
+      rb.x = los - 70; rb.y = MID; W.snapTo = rb;
+      W.phillySide = s;
+    }
+    if (T === 't_jet') {
+      const far = W.recs.filter(a => a.pos !== 'RB' && Math.sign(a.y - MID) === -side).sort((a, b) => Math.abs(b.y - MID) - Math.abs(a.y - MID))[0] || W.recs.find(a => a.pos !== 'RB');
+      if (far) { const meet = { x: los - 64, y: MID - side * 26 }; W.jet = far; far.manual = true; far.plan = { pts: [{ x: los - 52, y: MID - side * 70 }, meet, { x: los - 66, y: MID + side * 20 }], i: 0, through: true }; W.snapAt = clamp(0.6 + dist(far, meet) / 80, 1.1, 2.6); }
+    }
+    if (T === 't_fakefg') {
+      W.ol.forEach((o, i) => { o.y = MID + (i - 2) * 24; o.y0 = o.y; });
+      for (const a of W.recs) if (a !== rb) { a.x = los - 16; a.y = clamp(MID + (a.y - MID) * 0.5, TOPY + 40, BOTY - 40); a.route = 'block'; }
+      q.x = los - 70; q.y = MID; rb.x = los - 96; rb.y = MID + 18; W.snapTo = null;
+    }
+    if (T === 't_fakepunt') {
+      W.ol.forEach((o, i) => { o.y = MID + (i - 2) * 26; o.y0 = o.y; });
+      for (const a of W.recs) if (a !== rb) { const wide = Math.abs(a.y - MID) > 150; a.x = los - (wide ? 8 : 16); if (!wide) a.y = clamp(MID + (a.y - MID) * 0.55, TOPY + 50, BOTY - 50); a.route = wide ? 'go' : 'block'; }
+      q.x = los - 140; q.y = MID; rb.x = los - 62; rb.y = MID + 26; W.snapTo = null;
+    }
+    for (const a of W.recs) if (a.route === 'block' && !a.plan) { a.plan = { pts: [], i: 0 }; a.blocking = true; }
   }
 
   // Build the script of the play: who does what and when. Times are seconds from the start of the animation.
   function script(W) {
     const S = W.spec, los = W.los, X = ytg => 100 + (100 - ytg) * 10;
     const finalX = S.td ? Math.max(X(S.finalYtg), 1115) : X(S.finalYtg);
-    const sc = { finalX, snapAt: 0.5 };
+    const sc = { finalX, snapAt: W.snapAt || 0.5 };
     for (const a of W.recs) {
+      if (a === W.jet) continue; // already in motion
       const rt = S.routes[a.route];
       a.plan = { pts: rt && rt.id ? routePoints(a.x, a.y, rt.p(a.sideDir, a.y > MID ? -1 : 1)) : [], i: 0, through: ['go', 'seam', 'fade', 'wheel'].includes(a.route) };
       a.blocking = !rt || !rt.id;
       if (a.plan.through && a.plan.pts.length) { const l = a.plan.pts[a.plan.pts.length - 1]; a.plan.pts.push({ x: l.x + 400, y: l.y }); }
+      for (const p of a.plan.pts) p.x = Math.min(p.x, 1180); // routes stop at the back of the end zone
     }
     if (S.kind === 'flag') { sc.flagAt = 0.9; sc.endAt = 2.3; return sc; }
     if (S.kind === 'pass') {
-      const tgt = W.recs.find(a => a.slot === S.targetSlot) || W.rb;
+      const tgt = W.recs.find(a => a.slot === S.targetSlot) || (S.targetSlot === 'QB' ? W.qb : W.rb);
       sc.target = tgt;
       // throw when the target reaches the depth the pass was really caught at; otherwise by concept depth
       sc.airX = S.air != null && S.complete ? los + S.air * 10 : null;
@@ -168,7 +199,91 @@
     } else if (S.kind === 'spike') { sc.spikeAt = sc.snapAt + 0.25; }
     else if (S.kind === 'kneel') { sc.kneelAt = sc.snapAt + 0.6; }
     else if (S.kind === 'fg') { sc.kickAt = sc.snapAt + 0.9; }
+    if (S.trick) trickScript(W, sc);
     return sc;
+  }
+  // The choreography of each trick: who has the ball when, and when the real throw or carry starts.
+  function trickScript(W, sc) {
+    const S = W.spec, los = W.los, T = S.trick, q = W.qb, rb = W.rb, side = S.side || 1;
+    sc.trick = T; sc.airX = null;
+    if (S.kind === 'pass') {
+      const dev = { t_flea: 1.9, t_hbpass: 1.6, t_philly: 1.9, t_hook: 0 }[T] || 0;
+      sc.passer = T === 't_hbpass' ? rb : T === 't_philly' ? (W.recs.find(a => a.slot === S.passerSlot) || W.recs.find(a => a.pos !== 'RB') || q) : q;
+      sc.throwAt = sc.snapAt + dev + (T === 't_hook' ? 1.1 : 0.7);
+      if (S.sack) { sc.throwAt = 99; sc.sackAt = sc.snapAt + dev + (T === 't_hook' ? 1.6 : 0.75); }
+      if (S.blown) { sc.throwAt = 99; sc.sackAt = sc.snapAt + 0.95; } // nobody bit: met in the backfield before the trick develops
+      if (S.scramble) { sc.throwAt = 99; sc.scrambleAt = sc.snapAt + dev + 0.5; }
+      if (T === 't_flea' || T === 't_hbpass' || T === 't_hook' || T === 't_philly') rb.manual = true;
+      if (T === 't_philly') {
+        const P = sc.passer, s = W.phillySide || 1; sc.side = s; P.manual = true; P.plan = { pts: [{ x: los - 72, y: MID + s * 36 }], i: 0 };
+        q.plan = { pts: [{ x: los + 40, y: q.y - s * 4 }, { x: los + 150, y: q.y - s * 40 }], i: 0 }; q.manual = true;
+      }
+      if (T === 't_hook' && !W.recs.includes(rb)) W.recs.push(rb);
+    } else {
+      sc.passSet = ['t_statue', 't_fakefg', 't_fakepunt'].includes(T);
+      if (T === 't_reverse') {
+        sc.handAt = sc.snapAt + 0.35; sc.exchangeAt = sc.snapAt + 1.2; sc.runPts = [{ x: los - 34, y: MID + side * 150 }]; sc.tfl = false; rb.manual = true;
+        const w = W.recs.filter(a => a.pos !== 'RB' && Math.sign(a.y - MID) === side).sort((a, b) => Math.abs(b.y - MID) - Math.abs(a.y - MID))[0] || W.recs.find(a => a.pos !== 'RB');
+        W.rev = w; w.manual = true; w.plan = { pts: [{ x: los - 48, y: MID + side * 100 }], i: 0 };
+      }
+      if (T === 't_jet' && W.jet) { sc.carrier = W.jet; sc.handAt = sc.snapAt + 0.12; sc.trickPop = 'JET SWEEP!'; if (S.yards <= -2) sc.runPts = [{ x: los - 30, y: MID + side * 90 }, { x: sc.finalX, y: MID + side * 120 }]; }
+      if (T === 't_wildcat') { sc.handAt = sc.snapAt; }
+      if (T === 't_statue') { sc.handAt = sc.snapAt + 1.0; sc.trickPop = 'STATUE OF LIBERTY!'; }
+      if (T === 't_fakefg') { sc.handAt = sc.snapAt + 0.75; sc.longSnap = 0.3; sc.trickPop = 'FAKE!'; }
+      if (T === 't_fakepunt') { sc.handAt = sc.snapAt + 0.85; sc.longSnap = 0.5; sc.trickPop = 'FAKE PUNT!'; }
+    }
+  }
+  // per-frame movement the trick needs before the real throw happens
+  function trickPass(W, sc, dt) {
+    const S = W.spec, t = W.t, b = W.ball, q = W.qb, rb = W.rb, los = W.los, after = t - sc.snapAt, side = sc.side || 1, T = S.trick;
+    if (T === 't_flea') {
+      if (!sc.handed) { rb.seek(los - 58, MID + 22, dt, 0.8); q.seek(los - 76, MID + 6, dt, 0.6);
+        if (after >= 0.35) { sc.handed = true; b.carrier = rb; rb.plan = { pts: [{ x: los - 14, y: MID + 30 }], i: 0 }; sc.bite = { from: t, to: t + 1.1 }; } }
+      else if (!sc.pitched) { if (rb.plan) rb.follow(dt, 0.85); q.seek(los - 118, MID, dt, 0.9);
+        if (after >= 1.15) { sc.pitched = true; rb.plan = null; b.carrier = null; b.flying = { from: { x: rb.x, y: rb.y }, to: { x: q.x + 6, y: q.y }, t0: t, dur: 0.38, h: 22, onLand: () => { b.carrier = q; } }; W.pops.push({ t, text: 'FLEA FLICKER!', good: true }); } }
+      else { rb.seek(los - 30, MID + 45, dt, 0.5); if (b.carrier === q && !q.down && !q.plan) q.seek(los - 118, MID, dt, 0.7); }
+      return;
+    }
+    if (T === 't_hbpass') {
+      if (!sc.tossed) { rb.seek(los - 42, MID + side * 95, dt, 0.9, false); q.seek(los - 72, MID + side * 10, dt, 0.5);
+        if (after >= 0.3) { sc.tossed = true; b.carrier = null; b.flying = { from: { x: q.x, y: q.y }, to: { x: rb.x + 12, y: rb.y + side * 6 }, t0: t, dur: 0.32, h: 14, onLand: () => { b.carrier = rb; rb.plan = { pts: [{ x: los - 34, y: MID + side * 150 }], i: 0 }; } }; sc.bite = { from: t, to: t + 1.3 }; } }
+      else { if (rb.plan && b.carrier === rb && !rb.down && rb.follow(dt, 0.9)) { rb.plan = null; sc.throwAt = Math.min(sc.throwAt, t + 0.35); } q.seek(los - 90, MID - side * 25, dt, 0.5); }
+      return;
+    }
+    if (T === 't_philly') {
+      const P = sc.passer;
+      if (!sc.pitched) { rb.seek(los - 62, MID - side * 55, dt, 0.65); if (P.plan) P.follow(dt, 0.95);
+        if (after >= 1.0) { sc.pitched = true; b.carrier = null; P.plan = null; b.flying = { from: { x: rb.x, y: rb.y }, to: { x: P.x + 6, y: P.y }, t0: t, dur: 0.3, h: 14, onLand: () => { b.carrier = P; sc.throwAt = Math.min(sc.throwAt, W.t + 0.7); } }; sc.bite = { from: t - 0.5, to: t + 0.6 }; } }
+      else { if (b.carrier === P && !P.down) P.seek(los - 62, MID + side * 30, dt, 0.8); rb.seek(los - 50, MID - side * 70, dt, 0.4); }
+      if (q.plan && !q.carrying && !q.down) q.follow(dt, 0.95); // the quarterback runs his route
+      return;
+    }
+    if (T === 't_hook') {
+      const tg = sc.target;
+      if (!sc.thrown) { rb.seek(tg.x - 40, tg.y + (tg.y > MID ? -28 : 28), dt, 0.9, false); if (!b.flying && b.carrier === q && !q.down && !q.plan) q.seek(los - 105, MID, dt, 0.85); }
+      else if (!sc.lateraled) rb.seek(tg.x - 30, tg.y + (tg.y > MID ? -24 : 24), dt, 1, false);
+    }
+  }
+  function trickRun(W, sc, dt) {
+    const S = W.spec, t = W.t, q = W.qb, rb = W.rb, los = W.los, side = sc.side, T = S.trick;
+    if (!sc.handed) {
+      if (T === 't_reverse') { rb.seek(q.x + 10, q.y + 25, dt, 0.6); q.seek(los - 72, MID, dt, 0.5); }
+      else if (T === 't_jet') { if (W.jet && W.jet.plan) W.jet.follow(dt, 0.9); }
+      else if (T === 't_statue') { rb.seek(los - 84, MID + side * 10, dt, 0.55); q.seek(los - 108, MID, dt, 0.85); }
+      else if (T === 't_fakefg') { rb.seek(los - 84, MID + 10, dt, 0.5); }
+      return;
+    }
+    if (T === 't_reverse') {
+      if (!sc.exchanged) {
+        if (W.rev.plan) W.rev.follow(dt, 0.95);
+        if (t >= sc.exchangeAt) {
+          sc.exchanged = true; const w = W.rev, fs = -side; rb.carrying = false; rb.plan = null; sc.carrier = w; W.ball.carrier = w; w.carrying = true; w.manual = false;
+          const pts = S.yards <= -2 ? [{ x: los - 22, y: MID + fs * 120 }, { x: sc.finalX, y: MID + fs * 140 }] : [{ x: los - 30, y: MID + fs * 125 }, { x: los + 12, y: MID + fs * 165 }, { x: sc.finalX, y: clamp(MID + fs * rnd(120, 190), TOPY + 18, BOTY - 18) }];
+          if (S.oob) pts[pts.length - 1].y = fs > 0 ? BOTY - 4 : TOPY + 4;
+          w.plan = { pts, i: 0 }; assignTackler(W, sc, w); W.pops.push({ t, text: 'REVERSE!', good: true });
+        }
+      } else rb.seek(los - 20, MID + side * 120, dt, 0.5);
+    }
   }
 
   // a long carry still has to fit the clip: speed the carrier up so his path takes at most ~3.2 s
@@ -205,27 +320,35 @@
     const after = t - sc.snapAt;
     const X = ytg => 100 + (100 - ytg) * 10;
     if (S.kind === 'flag') { if (t >= sc.flagAt && !sc.flagged) { sc.flagged = true; W.pops.push({ t, text: 'FLAG', flag: true, sub: S.flag.kind.toUpperCase() + ' · ' + (S.flag.onDefense ? 'DEFENSE' : 'OFFENSE') }); } return; }
-    if (after < 0) { // pre-snap: a blitz look creeps, prevent backs up
+    if (after < 0) { // pre-snap: a blitz look creeps, prevent backs up, a jet-sweep receiver goes in motion
       if (W.look === 'blitz') for (const l of W.lb) l.seek(l.x0 - 8 * after, l.y0, dt, 0.3);
+      if (W.jet && W.jet.plan) W.jet.follow(dt, 0.9);
       return;
     }
-    const q = W.qb;
+    const q = W.qb, P = sc.passer || q; // whoever throws it (the back on a halfback pass, the tight end on the Philly Special)
+    if (!sc.snapped) {
+      sc.snapped = true;
+      if (sc.longSnap) { b.carrier = null; b.flying = { from: { x: los - 18, y: MID }, to: { x: q.x + 8, y: q.y }, t0: t, dur: sc.longSnap, h: 10, onLand: () => { b.carrier = q; } }; }
+      if (S.trick === 't_wildcat') W.pops.push({ t, text: 'WILDCAT!', good: true });
+    }
     const isRun = S.kind === 'run';
-    const fire = isRun && !(sc.draw && !sc.handed); // a draw shows pass protection until the handoff
+    const fire = isRun && !((sc.draw || sc.passSet) && !sc.handed); // a draw (or a fake) shows pass protection until the handoff
     // --- line play: pass sets back and the pocket collapses; run fires out ---
     for (const o of W.ol) {
       const tx = fire ? o.x0 + 14 : o.x0 - 8 - Math.min(after, 2.5) * 10;
       o.seek(tx, o.y0 + (fire ? (o.y0 > MID ? 6 : -6) : 0), dt, 0.6);
     }
     for (const d of W.dl) {
-      if (d === sc.freeRusher) { d.seek(q.x, q.y, dt, 1.05, false); continue; }
+      if (d === sc.freeRusher) { d.seek(P.x, P.y, dt, 1.05, false); continue; }
       if (d.tackler) continue;
       const o = W.ol.reduce((best, x) => dist(x, d) < dist(best, d) ? x : best, W.ol[0]);
       d.seek(o.x + 15, o.y + (d.y0 - o.y0) * 0.4 + Math.sin(t * 7 + d.y0) * 3, dt, 0.75);
     }
     // --- quarterback ---
+    const tdText = () => S.twoPt ? 'TWO POINTS!' : S.yards >= 40 ? 'HOUSE CALL!' : 'TOUCHDOWN!';
     if (S.kind === 'pass') {
-      if (!b.flying && b.carrier === q && !q.down && !q.plan) {
+      if (sc.trick) { if (!sc.sacked) trickPass(W, sc, dt); }
+      else if (!b.flying && b.carrier === q && !q.down && !q.plan) {
         const drop = S.pa ? (after < 0.5 ? { x: los - 78, y: MID + 12 } : { x: los - 118, y: MID })
           : { x: los - (S.rbTarget ? 95 : 118) + (after > 1.8 ? 10 : 0), y: MID + (S.roll ? (sc.target ? Math.sign(sc.target.y - MID) * 160 : 120) : 0) };
         if (S.roll && after > 0.6) drop.x = los - 55;
@@ -233,32 +356,48 @@
         q.seek(drop.x, drop.y, dt, 0.85);
       }
       if ((sc.sackAt || sc.pressureAt) && t >= (sc.sackAt ? sc.sackAt - 0.9 : sc.pressureAt) && !sc.freeRusher) { sc.freeRusher = W.look === 'blitz' ? W.lb[0] : W.dl[Math.random() < 0.5 ? 0 : 3]; if (sc.sackAt && W.whoNum) swapNum(W, sc.freeRusher, W.whoNum); }
-      if (sc.sackAt && t >= sc.sackAt && !q.down) {
-        q.down = true; q.x = X(S.finalYtg); q.vx = q.vy = 0; b.carrier = S.strip ? null : q;
-        if (sc.freeRusher) { sc.freeRusher.down = true; sc.freeRusher.x = q.x + 10; sc.freeRusher.y = q.y + 6; }
-        if (S.strip) { b.loose = true; b.x = q.x - 14; b.y = q.y + 12; sc.recoverAt = t + 0.5; }
+      if (sc.sackAt && t >= sc.sackAt && !P.down && !sc.sacked) {
+        const V = b.carrier && b.carrier.team === 'off' ? b.carrier : P; // whoever has it goes down (a blown-up trick catches the back)
+        sc.sacked = true; V.down = true; V.x = X(S.finalYtg); V.vx = V.vy = 0; V.plan = null; b.flying = null; b.carrier = S.strip ? null : V;
+        if (sc.freeRusher) { sc.freeRusher.down = true; sc.freeRusher.x = V.x + 10; sc.freeRusher.y = V.y + 6; }
+        if (S.strip) { b.loose = true; b.x = V.x - 14; b.y = V.y + 12; sc.recoverAt = t + 0.5; }
         sc.endAt = t + (S.strip ? 1.3 : 0.9);
-        W.pops.push({ t, text: S.strip ? 'STRIP SACK!' : 'SACKED!', bad: true });
+        W.pops.push({ t, text: S.blown ? (S.strip ? 'BLOWN UP, BALL OUT!' : 'BLOWN UP!') : S.strip ? 'STRIP SACK!' : 'SACKED!', bad: true });
       }
-      if (sc.scrambleAt && t >= sc.scrambleAt && !q.plan) {
+      if (sc.scrambleAt && t >= sc.scrambleAt && !q.plan && b.carrier === q) {
         q.plan = { pts: [{ x: los - 40, y: q.y + (Math.random() < 0.5 ? -1 : 1) * 90 }, { x: sc.finalX, y: clamp(q.y + rnd(-120, 120), TOPY + 18, BOTY - 18) }], i: 0 };
         if (S.oob) q.plan.pts[1].y = q.plan.pts[1].y > MID ? BOTY - 4 : TOPY + 4;
         q.carrying = true; W.pops.push({ t, text: 'SCRAMBLE!', good: true }); assignTackler(W, sc, q);
       }
-      if (q.plan && !q.down) { if (q.follow(dt, 1)) { q.down = true; sc.endAt = t + 0.8; if (S.td) W.pops.push({ t, text: 'TOUCHDOWN!', good: true }); else if (S.first) W.pops.push({ t, text: 'FIRST DOWN', good: true }); } }
-      if (sc.recoverAt && t >= sc.recoverAt && b.loose) { b.loose = false; const d = sc.freeRusher || W.lb[0]; b.carrier = d; d.x = b.x; d.y = b.y; }
+      if (q.plan && !q.down && q.carrying) { if (q.follow(dt, 1)) { q.down = true; sc.endAt = t + 0.8; if (S.td) W.pops.push({ t, text: tdText(), good: true }); else if (S.twoPt) W.pops.push({ t, text: 'NO GOOD', bad: true }); else if (S.first) W.pops.push({ t, text: 'FIRST DOWN', good: true }); } }
+      if (sc.recoverAt && t >= sc.recoverAt && b.loose) { b.loose = false; b.drop = false; const d = sc.freeRusher || W.lb[0]; b.carrier = d; d.x = b.x; d.y = b.y; }
+      // hook and ladder: the catch was the first half; the pitch to the trailing back is the play
+      if (sc.lateralAt && t >= sc.lateralAt && !sc.lateraled) {
+        sc.lateraled = true; const tg = sc.target, rb = W.rb; tg.carrying = false; tg.plan = null; b.carrier = null;
+        const to = S.lateralLost ? { x: rb.x - 24, y: rb.y + 10 } : { x: rb.x + 8, y: rb.y };
+        b.flying = { from: { x: tg.x, y: tg.y }, to, t0: t, dur: 0.3, h: 16, onLand: () => {
+          if (S.lateralLost) { b.loose = true; b.drop = true; b.vx = 25; b.vy = 0; sc.recoverAt = W.t + 0.5; sc.endAt = W.t + 1.5; W.pops.push({ t: W.t, text: 'LATERAL ON THE GROUND!', bad: true }); return; }
+          b.carrier = rb; rb.carrying = true; rb.manual = false; rb.x = b.x; rb.y = b.y;
+          const fy = S.oob ? (rb.y > MID ? BOTY - 4 : TOPY + 4) : clamp(rb.y + rnd(-40, 40), TOPY + 16, BOTY - 16);
+          rb.plan = { pts: [{ x: sc.finalX, y: fy }], i: 0 }; assignTackler(W, sc, rb);
+          sc.endAt = W.t + clamp(Math.abs(sc.finalX - b.x) / 90 + 0.9, 1.0, 3.2);
+        } };
+        W.pops.push({ t, text: 'HOOK AND LADDER!', good: true });
+      }
       const tg = sc.target;
       const ready = sc.airX != null ? (t >= sc.throwMin && (tg.x >= sc.airX - 6 || (tg.plan && tg.plan.i >= tg.plan.pts.length) || t >= sc.throwAt + 1.2)) : t >= sc.throwAt;
-      if (!sc.thrown && ready && b.carrier === q && !q.down && !q.plan) {
+      if (!sc.thrown && ready && b.carrier === P && !P.down && !P.plan) {
         sc.thrown = true;
         const lead = { x: tg.x + tg.vx * 0.5, y: tg.y + tg.vy * 0.5 };
         if (sc.airX != null) lead.x = Math.max(lead.x, sc.airX);
         if (S.hail) { lead.x = Math.min(1095, X(S.finalYtg) + 10); lead.y = MID + rnd(-60, 60); }
         if (!S.complete && !S.int) { lead.x += rnd(-10, 25); lead.y += rnd(-18, 18); } // an incompletion is off the mark or contested
         lead.x = clamp(lead.x, 110, S.td ? 1150 : 1095); lead.y = clamp(lead.y, TOPY + 6, BOTY - 6);
-        const d = dist(q, lead); const flight = clamp(d / 440 + 0.25, 0.35, 1.5);
-        b.flying = { from: { x: q.x, y: q.y }, to: lead, t0: t, dur: flight, h: clamp(d / 6, 10, 70) * (S.depth === 'deep' || S.hail ? 1.2 : 0.7) };
+        const d = dist(P, lead); const flight = clamp(d / 440 + 0.25, 0.35, 1.5);
+        b.flying = { from: { x: P.x, y: P.y }, to: lead, t0: t, dur: flight, h: clamp(d / 6, 10, 70) * (S.depth === 'deep' || S.hail ? 1.2 : 0.7) };
         b.carrier = null;
+        if (S.trick === 't_hbpass') W.pops.push({ t, text: 'HALFBACK PASS!', good: true });
+        if (S.trick === 't_philly') W.pops.push({ t, text: 'PHILLY SPECIAL!', good: true });
         if (S.int) { const pick = [...W.cb, ...W.s, W.nb, ...W.lb].reduce((best, x) => dist(x, lead) < dist(best, lead) ? x : best, W.s[0]); sc.picker = pick; pick.intercept = lead; if (W.whoNum) swapNum(W, pick, W.whoNum); }
         else if (S.pbu || (!S.complete && !S.dropped && Math.random() < 0.5)) { const db = [...W.cb, ...W.s, W.nb].reduce((best, x) => dist(x, lead) < dist(best, lead) ? x : best, W.cb[0]); db.intercept = lead; db.breakup = true; sc.breaker = db; if (S.pbu && W.whoNum) swapNum(W, db, W.whoNum); }
       }
@@ -269,7 +408,8 @@
       b.x = f.from.x + (f.to.x - f.from.x) * s; b.y = f.from.y + (f.to.y - f.from.y) * s; b.h = Math.sin(s * Math.PI) * f.h;
       if (s >= 1) {
         b.flying = null; b.h = 0;
-        if (isRun) { const c = sc.carrier; b.carrier = c; c.carrying = true; } // the toss arrives
+        if (f.onLand) f.onLand(); // a pitch, a long snap, a lateral: the trick says what happens next
+        else if (isRun) { const c = sc.carrier; b.carrier = c; c.carrying = true; } // the toss arrives
         else if (S.kind === 'fg') { sc.endAt = t + 0.9; W.pops.push({ t, text: S.made ? 'GOOD!' : 'NO GOOD', bad: !S.made, good: S.made }); }
         else if (S.int) {
           const p = sc.picker; p.x = b.x; p.y = b.y; b.carrier = p; p.returning = true; p.intercept = null;
@@ -278,6 +418,9 @@
           sc.endAt = t + (S.intTd ? 2.4 : 1.5);
         } else if (S.complete) {
           const tg = sc.target; tg.x = b.x; tg.y = b.y; b.carrier = tg; tg.carrying = true;
+          if (S.trick === 't_hook') { // turn and pitch it
+            tg.plan = { pts: [{ x: tg.x + 18, y: tg.y + (tg.y > MID ? 10 : -10) }], i: 0 }; sc.lateralAt = t + 0.35; sc.endAt = t + 4;
+          } else {
           const fy = S.oob ? (tg.y > MID ? BOTY - 4 : TOPY + 4) : clamp(tg.y + rnd(-50, 50), TOPY + 16, BOTY - 16);
           tg.plan = { pts: [{ x: sc.finalX, y: fy }], i: 0 };
           const yac = sc.finalX - b.x;
@@ -287,6 +430,7 @@
           sc.yacPop = yac > 100 ? t + 0.5 : null;
           assignTackler(W, sc, tg);
           sc.endAt = t + clamp(Math.abs(yac) / 90 + 0.9, 1.0, 3.2);
+          }
         } else {
           b.loose = true; b.drop = true; b.vx = rnd(-30, 30); b.vy = rnd(-20, 20);
           if (sc.breaker) { b.vx = 40; b.vy = (b.y > MID ? 1 : -1) * 50; b.h = 20; }
@@ -302,10 +446,11 @@
       if (!sc.handed && t >= sc.handAt) {
         sc.handed = true; c.plan = { pts: sc.runPts, i: 0 }; assignTackler(W, sc, c);
         if (sc.toss) { b.carrier = null; b.flying = { from: { x: q.x, y: q.y }, to: { x: c.x + 12, y: c.y + sc.side * 6 }, t0: t, dur: 0.32, h: 14 }; }
-        else { b.carrier = c; c.carrying = true; }
+        else { b.flying = null; b.carrier = c; c.carrying = true; }
         if (sc.tfl) { const lb = W.lb[sc.side > 0 ? 1 : 0]; lb.tackler = true; lb.speedMul = 1.2; sc.tackler = lb; }
+        if (sc.trickPop) W.pops.push({ t, text: sc.trickPop, good: true });
       }
-      if (!sc.handed) { // before the exchange: the back sets up the concept, the QB sells it
+      if (!sc.handed && !sc.trick) { // before the exchange: the back sets up the concept, the QB sells it
         if (c !== q) {
           if (sc.toss) c.seek(los - 40, MID + sc.side * 95, dt, 0.9, false);
           else if (sc.draw) c.seek(los - 78, MID + sc.side * 14, dt, 0.5);
@@ -314,19 +459,21 @@
           if (sc.draw) q.seek(los - 100, MID, dt, 0.85); else q.seek(los - 72, MID + (sc.toss ? sc.side * 10 : 0), dt, 0.5);
         } else q.seek(los - 72, MID, dt, 0.5);
       }
+      if (sc.trick) trickRun(W, sc, dt);
       if (sc.handed && c.plan && !c.down) {
         const fin = c.follow(dt, 1);
-        if (fin) { c.down = true; sc.endAt = sc.endAt || t + (S.fumble ? 1.2 : 0.7);
+        if (fin && !(sc.exchangeAt && !sc.exchanged)) { c.down = true; sc.endAt = sc.endAt || t + (S.fumble ? 1.2 : 0.7);
           if (S.fumble) { b.loose = true; b.carrier = null; b.x = c.x + 8; b.y = c.y + 6; sc.recoverAt = t + 0.45; W.pops.push({ t, text: 'FUMBLE!', bad: true }); }
-          else if (S.td) W.pops.push({ t, text: S.yards >= 40 ? 'HOUSE CALL!' : 'TOUCHDOWN!', good: true });
-          else if (S.yards <= -2) W.pops.push({ t, text: 'TACKLE FOR LOSS!', bad: true });
+          else if (S.td) W.pops.push({ t, text: tdText(), good: true });
+          else if (S.twoPt) W.pops.push({ t, text: 'NO GOOD', bad: true });
+          else if (S.yards <= -2) W.pops.push({ t, text: S.blown ? 'BLOWN UP!' : 'TACKLE FOR LOSS!', bad: true });
           else if (S.oob) W.pops.push({ t, text: 'PUSHED OUT', good: false });
           else if (S.yards >= 12) W.pops.push({ t, text: Math.random() < 0.5 ? 'JUKED HIM!' : 'TRUCKED HIM!', good: true });
           else if (S.first) W.pops.push({ t, text: 'FIRST DOWN', good: true });
         }
       }
       if (sc.recoverAt && t >= sc.recoverAt && b.loose) { b.loose = false; const d = [...W.lb, ...W.s].reduce((best, x) => dist(x, b) < dist(best, b) ? x : best, W.lb[0]); d.x = b.x; d.y = b.y; b.carrier = d; }
-      if (c !== q && sc.handed && !q.down) q.seek(los - 95, MID + 20, dt, 0.5);
+      if (c !== q && sc.handed && !q.down) { if (W.qbWide) q.seek(q.x + 30, q.y, dt, 0.4); else if (!sc.passSet) q.seek(los - 95, MID + 20, dt, 0.5); }
     }
     if (S.kind === 'spike' && t >= sc.spikeAt && !sc.spiked) { sc.spiked = true; b.carrier = null; b.loose = true; b.x = q.x + 6; b.y = q.y + 8; sc.endAt = t + 0.6; W.pops.push({ t, text: 'SPIKE · CLOCK STOPPED', good: true }); }
     if (S.kind === 'kneel' && t >= sc.kneelAt && !sc.knelt) { sc.knelt = true; q.down = true; sc.endAt = t + 0.6; }
@@ -338,14 +485,15 @@
     // --- receivers run routes, block, or carry ---
     for (const a of W.recs) {
       if (isRun && a === sc.carrier) continue;
-      if (a === b.carrier && a.plan) {
-        if (!a.down) { if (a.follow(dt, 1)) { a.down = true; if (S.td) W.pops.push({ t, text: S.yards >= 40 ? 'HOUSE CALL!' : 'TOUCHDOWN!', good: true }); else if (S.oob) W.pops.push({ t, text: 'OUT OF BOUNDS', good: false }); else if (S.first) W.pops.push({ t, text: 'FIRST DOWN', good: true }); if (sc.tackler && !S.td && !S.oob) { sc.tackler.down = true; } } }
+      if (a === b.carrier && a.plan && a.carrying) {
+        if (!a.down) { if (a.follow(dt, 1)) { a.down = true; if (S.td) W.pops.push({ t, text: tdText(), good: true }); else if (S.twoPt) W.pops.push({ t, text: 'NO GOOD', bad: true }); else if (S.oob) W.pops.push({ t, text: 'OUT OF BOUNDS', good: false }); else if (S.first) W.pops.push({ t, text: 'FIRST DOWN', good: true }); if (sc.tackler && !S.td && !S.oob) { sc.tackler.down = true; } } }
         else a.stop(dt);
         continue;
       }
+      if (a.manual) { if (a.down) a.stop(dt); continue; } // the trick moves this one
       if (a.blocking) { a.seek(a.x - 6, a.y, dt, 0.4); continue; }
       if (isRun && after > 0.3) { a.seek(a.x + 40, a.y, dt, 0.5); continue; } // stalk blocks downfield
-      if (sc.thrown || (sc.sackAt && t > sc.sackAt) || q.down || q.plan) { if (a.plan && a.plan.i < a.plan.pts.length && !sc.thrown && !q.down) a.follow(dt, 0.9); else a.stop(dt); continue; }
+      if (sc.thrown || (sc.sackAt && t > sc.sackAt) || P.down || q.carrying) { if (a.plan && a.plan.i < a.plan.pts.length && !sc.thrown && !P.down) a.follow(dt, 0.9); else a.stop(dt); continue; }
       a.follow(dt, S.kind === 'pass' ? 1 : 0.6);
     }
     // --- defense: coverage, pursuit, return ---
@@ -354,7 +502,9 @@
       if (d === b.carrier) { if (d.plan && !d.down) { if (d.follow(dt, 1)) d.down = true; } else d.stop(dt); continue; }
       if (d.down) { d.stop(dt); continue; }
       if (d.intercept && b.flying) { d.seek(d.intercept.x, d.intercept.y, dt, 1.25, false); continue; }
-      if (d === sc.freeRusher) { if (!q.down) d.seek(q.x, q.y, dt, 1.05, false); else d.stop(dt); continue; }
+      if (d === sc.freeRusher) { if (!P.down) d.seek(P.x, P.y, dt, 1.05, false); else d.stop(dt); continue; }
+      // the fake sells: backers (and a dropped-down safety) chase the back until the ball goes somewhere else
+      if (sc.bite && t >= sc.bite.from && t < sc.bite.to && !sc.thrown && (d.pos === 'LB' || (W.look === 'loaded' && d === W.s[0]))) { d.seek(W.rb.x + 12, W.rb.y, dt, 0.95, false); continue; }
       if (live) {
         const dest = live.plan && live.plan.pts[live.plan.pts.length - 1] || live;
         if (d.tackler) { const r = d.seek(dest.x + 6, dest.y, dt, 1, true); if (live.down && r < 18) d.stop(dt); continue; }
@@ -367,13 +517,13 @@
       if (sc.thrown || b.loose) { d.seek(b.x + (d.x > b.x ? 20 : -20), b.y + (d.y > b.y ? 15 : -15), dt, 0.8); continue; }
       if (isRun && sc.handed) { const c = sc.carrier; d.seek(c.x + 20, c.y, dt, d.pos === 'S' ? 0.8 : 1, false); continue; }
       const cov = W.cover.get(d);
-      if (cov) { // man: mirror with a cushion, trailing slightly
+      if (cov) { // man: mirror with a cushion, trailing slightly (nobody backs out of the end zone)
         const cushion = d.pos === 'LB' ? 30 : W.look === 'prevent' ? 60 : 28;
-        d.seek(cov.x + cushion + Math.max(0, cov.vx) * 0.15, cov.y + cov.vy * 0.1, dt, 1, false);
+        d.seek(Math.min(1185, cov.x + cushion + Math.max(0, cov.vx) * 0.15), cov.y + cov.vy * 0.1, dt, 1, false);
       } else if (d.pos === 'S') { // shell: deep halves, drifting with the quarterback's eyes
         const depth = W.look === 'prevent' ? 250 : W.look === 'loaded' && d === W.s[0] ? 50 : 150 + Math.min(after * 30, 70);
-        d.seek(los + depth, d.y0 + (q.y - MID) * 0.25 + (MID - d.y0) * 0.03, dt, 0.55);
-      } else { d.seek(los + (W.look === 'blitz' ? 10 : 50), d.y0 + (q.y - MID) * 0.3, dt, W.look === 'blitz' ? 1 : 0.5, false); }
+        d.seek(Math.min(1185, los + depth), d.y0 + (q.y - MID) * 0.25 + (MID - d.y0) * 0.03, dt, 0.55);
+      } else { d.seek(Math.min(1185, los + (W.look === 'blitz' ? 10 : 50)), d.y0 + (q.y - MID) * 0.3, dt, W.look === 'blitz' ? 1 : 0.5, false); }
     }
     if (b.carrier && !b.flying) { b.x = b.carrier.x + 9; b.y = b.carrier.y - 4; }
   }
@@ -410,7 +560,7 @@
     W.ballEl.querySelector('#shadow').setAttribute('opacity', b.h > 2 ? .18 : 0);
   }
   // once in a while the popup says what everyone in the stands said
-  const ALT = { 'SACKED!': ['FOLDED!', 'DOWN GOES THE QB'], 'INTERCEPTED!': ["THAT'S THEIRS NOW", 'PICKED!'], 'FUMBLE!': ['BUTTERFINGERS', 'BALL ON THE GROUND'], 'DROPPED!': ['HANDS.', 'IT HIT HIS HANDS'], 'INCOMPLETE': ['NOPE', 'NOT TODAY'], 'TACKLE FOR LOSS!': ['WRONG WAY', 'STUFFED'], 'JUKED HIM!': ['ANKLES', 'SEE YA'], 'TRUCKED HIM!': ['RUN HIM OVER', 'HE SAW HIM. DIDN\'T MATTER.'], 'MOSSED HIM!': ['GOT UP AND GOT IT', 'HIGH POINT'], 'HOUSE CALL!': ['GONE', 'NOBODY HOME'], 'NO GOOD': ['WIDE', 'DOINK-ADJACENT'] };
+  const ALT = { 'BLOWN UP!': ['THEY HAD IT SNIFFED OUT', 'NOBODY BIT'], 'TWO POINTS!': ['GOOD. TWO.', 'CONVERTED!'], 'SACKED!': ['FOLDED!', 'DOWN GOES THE QB'], 'INTERCEPTED!': ["THAT'S THEIRS NOW", 'PICKED!'], 'FUMBLE!': ['BUTTERFINGERS', 'BALL ON THE GROUND'], 'DROPPED!': ['HANDS.', 'IT HIT HIS HANDS'], 'INCOMPLETE': ['NOPE', 'NOT TODAY'], 'TACKLE FOR LOSS!': ['WRONG WAY', 'STUFFED'], 'JUKED HIM!': ['ANKLES', 'SEE YA'], 'TRUCKED HIM!': ['RUN HIM OVER', 'HE SAW HIM. DIDN\'T MATTER.'], 'MOSSED HIM!': ['GOT UP AND GOT IT', 'HIGH POINT'], 'HOUSE CALL!': ['GONE', 'NOBODY HOME'], 'NO GOOD': ['WIDE', 'DOINK-ADJACENT'] };
   function popup(box, p) {
     const el = document.createElement('div');
     el.className = 'pop ' + (p.good ? 'good' : p.bad ? 'bad' : '') + (p.flag ? ' flag' : '');
@@ -430,7 +580,7 @@
       const oldBall = svg.querySelector('#ball'); if (oldBall) oldBall.remove();
       const W = makeWorld(spec);
       const sc = script(W);
-      W.ball.carrier = W.qb;
+      W.ball.carrier = 'snapTo' in W ? W.snapTo : W.qb;
       mount(svg, W); draw(W);
       let last = null, raf = 0, finished = false;
       const hint = document.createElement('div'); hint.className = 'skiphint'; hint.textContent = 'Tap the field to skip'; box.appendChild(hint);
@@ -459,7 +609,7 @@
 
   // Headless run of a play (no drawing, no rAF): used by tests to check that every play type resolves
   function simulate(spec, maxT = 9) {
-    const W = makeWorld(spec); const sc = script(W); W.ball.carrier = W.qb;
+    const W = makeWorld(spec); const sc = script(W); W.ball.carrier = 'snapTo' in W ? W.snapTo : W.qb;
     const dt = 1 / 60; let n = 0;
     while (!(sc.endAt && W.t >= sc.endAt) && W.t < maxT) { W.t += dt; step(W, sc, dt); n++; }
     const bad = W.A.filter(a => !Number.isFinite(a.x) || !Number.isFinite(a.y) || a.x < -50 || a.x > 1250 || a.y < -50 || a.y > 583).map(a => a.id);

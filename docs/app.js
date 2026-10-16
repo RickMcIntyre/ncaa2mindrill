@@ -82,6 +82,19 @@ const CALLS = {
   p_deep_mid:   { label: 'Post', dur: 7, depth: 'deep', side: 'mid' },
   p_rb:   { label: 'Screen', sub: 'To the back, blockers in front', dur: 5 },
   hail:   { label: 'Hail Mary', sub: 'Everyone to the end zone', dur: 9 },
+  // trick plays: the whole bag, every down. Each rides a real-snap pool (base) with its own tilt vs the look, its own
+  // sack/pick/fumble risk, and a chance of getting blown up in the backfield. Long-developing plays take longer off the clock.
+  trick:  { grp: 'Trick', label: 'Trick play', sub: 'Flea flicker, reverse, Philly Special, fake kicks and the rest', dur: 6, pick: true },
+  t_flea:   { label: 'Flea flicker', sub: 'Handoff, pitch back, go deep', dur: 8, trick: true, base: 'p_deep_side', tilt: { loaded: .04, blitz: .02, base: .01, light: -.03, prevent: -.06 }, sack: 1.7, int: 1.1, blow: .08 },
+  t_hbpass: { label: 'Halfback pass', sub: 'Toss, then the back throws deep', dur: 7, trick: true, base: 'p_deep_side', tilt: { loaded: .03, blitz: .01, base: 0, light: -.02, prevent: -.05 }, sack: .8, int: 1.6, blow: .10, passer: 'rb' },
+  t_reverse:{ label: 'Reverse', sub: 'Hand off one way, receiver takes it the other', dur: 7, trick: true, base: 'r_out', tilt: { blitz: .03, loaded: .02, base: 0, light: -.04, prevent: -.02 }, fum: 2.0, blow: .14 },
+  t_jet:    { label: 'Jet sweep', sub: 'Receiver in motion takes the handoff', dur: 5, trick: true, base: 'r_out', tilt: { blitz: .01, loaded: .01, base: .005, light: -.01, prevent: .01 }, fum: 1.3, blow: .06, carrier: 'wr' },
+  t_wildcat:{ label: 'Wildcat', sub: 'Direct snap to the back, QB split wide', dur: 5, trick: true, base: 'r_in', tilt: { light: .015, prevent: .02, base: 0, blitz: -.01, loaded: -.02 }, fum: 1.2, blow: .05, qbSplit: true },
+  t_statue: { label: 'Statue of Liberty', sub: 'Fake the throw, hand it off behind the back', dur: 6, trick: true, base: 'r_out', tilt: { blitz: .04, light: .02, base: .005, loaded: -.02, prevent: 0 }, fum: 1.5, blow: .08 },
+  t_hook:   { label: 'Hook and ladder', sub: 'Short catch, lateral to the trailing back', dur: 6, trick: true, base: 'p_short_side', tilt: { prevent: .03, light: .01, base: 0, loaded: 0, blitz: -.01 }, sack: 1.0, int: 1.0, lateral: true },
+  t_philly: { label: 'Philly Special', sub: 'Direct snap, pitch, the tight end throws to the QB', dur: 6, trick: true, base: 'p_short_mid', tilt: { loaded: .035, blitz: .02, base: .01, light: -.01, prevent: -.02 }, sack: .6, int: 1.3, blow: .09, qbTarget: true, passer: 'te' },
+  t_fakefg: { label: 'Fake field goal', sub: 'Holder keeps it and runs the edge', dur: 6, trick: true, base: 'r_out', tilt: { loaded: .02, base: .03, light: .03, blitz: .02, prevent: .04 }, fum: 1.5, blow: .12, qb: true, needsFg: true },
+  t_fakepunt:{ label: 'Fake punt', sub: 'Punter runs it up the middle', dur: 6, trick: true, base: 'r_in', tilt: { base: .03, light: .04, prevent: .05, loaded: 0, blitz: .01 }, fum: 1.2, blow: .10, qb: true, needsPunt: true },
   spike:  { grp: 'Clock & kicks', label: 'Spike it', sub: 'Stop the clock, lose a down', dur: 1 },
   kneel:  { grp: 'Clock & kicks', label: 'Kneel', sub: 'Run the clock', dur: 2 },
   fg:     { grp: 'Clock & kicks', label: 'Field goal', sub: '', dur: 5 },
@@ -127,7 +140,16 @@ const CONCEPTS = {
 };
 function routeOk(st, key) { const r = ROUTES[key]; if (!r.id) return false; return r.id === 'p_deep_side' ? st.ytg > 20 : r.id === 'p_deep_mid' ? st.ytg > 25 : true; }
 function blockers() { return Object.values(G.routes).filter(k => k === 'block').length; }
+// a pass by any name: the pass concepts, the Hail Mary, and the trick plays that end in a throw
+const isPassId = id => id.startsWith('p_') || id === 'hail' || !!(CALLS[id] && CALLS[id].trick && CALLS[id].base.startsWith('p_'));
 function available(st, id) {
+  const c = CALLS[id];
+  if (st.twoPt && ['fg', 'punt', 'spike', 'kneel', 'hail', 't_fakefg', 't_fakepunt'].includes(id)) return false; // a two-point try is one snap from the 3
+  if (c && c.trick) {
+    if (c.needsFg) return st.ytg + 17 <= 65;
+    if (c.needsPunt) return st.down === 4 && st.ytg > 40;
+    return true;
+  }
   switch (id) {
     case 'r_sneak': return st.dist <= 2;
     case 'r_draw': return st.down < 4 || st.dist <= 5;
@@ -161,6 +183,26 @@ function tilted(key, rows, adv) {
 function outcomes(st, id, tgt, mods = {}) {
   const S = st.sc, L = S.lineup, z = zoneOf(st.ytg), dg = st.down >= 3 ? 'L' : 'E', sy = st.dist <= 2 ? 'S' : 'N';
   const out = [];
+  const tc = CALLS[id];
+  if (tc && tc.trick) { // a trick play is its base play with the trick's risks layered on top
+    const look0 = st.look || 'base';
+    const base = tc.base.startsWith('p_deep') && st.ytg <= 20 ? 'p_short_side' : tc.base; // near the goal line the deep tricks throw short
+    const isP = base.startsWith('p_');
+    const inner = outcomes(st, base, isP ? (tgt || trickTarget(S, tc)) : null, { ...mods, trick: tc, trickAdv: (tc.tilt[look0] || 0) });
+    const blow = tc.blow || 0;
+    let rows = inner.map(o => ({ ...o, p: o.p * (1 - blow) }));
+    // blown up: the defense doesn't bite and the ball carrier is met in the backfield; sometimes the ball comes out
+    if (blow) rows.push({ p: blow * .4, y: -3, f: 0, src: null, blown: true }, { p: blow * .3, y: -6, f: 0, src: null, blown: true }, { p: blow * .15, y: -9, f: 0, src: null, blown: true }, { p: blow * .15, y: -4, f: 8, src: null, fumble: true, blown: true });
+    if (tc.lateral) { // the lateral: half the catches pick up extra yards, and once in a while it hits the ground
+      const out2 = [];
+      for (const o of rows) {
+        if ((o.f & 1) && !(o.f & 8) && !o.blown) out2.push({ ...o, p: o.p * .465, lateral: true }, { ...o, p: o.p * .465, y: o.y + 7, f: o.f & ~4, lateral: true }, { p: o.p * .07, y: -4, f: 8, src: o.src, fumble: true, lateralLost: true });
+        else out2.push(o);
+      }
+      rows = out2;
+    }
+    return rows;
+  }
   const addPool = (key, rows, adv, mass) => { const w = tilted(key, rows, adv); rows.forEach((r, i) => out.push({ p: mass * w[i], y: r[0], f: r[1], src: r })); };
   const lgSack = D.rates.sack, lgInt = D.rates.int;
   // the defensive look tilts the play: a loaded box eats runs and opens the pass, a blitz brings sacks and big plays, prevent gives up the short stuff
@@ -176,8 +218,8 @@ function outcomes(st, id, tgt, mods = {}) {
       r_draw: { blitz: .035, light: .01, loaded: -.03, prevent: .02, base: .005 }, r_power: { light: .01, loaded: -.01, blitz: 0, base: 0, prevent: .01 } }[id];
     let sideAdv = 0;
     if (mods.side && st.lookSide && (look === 'loaded' || look === 'blitz')) sideAdv = (mods.side === st.lookSide ? -.02 : .02) + (c0.counter && mods.side !== st.lookSide ? .01 : 0);
-    const adv = S.orat.or + S.drat.dr + (c0.qb ? (L.qb.adj || 0) * .3 : (L.rb.adj || 0) * .6) + (id === 'r_sneak' ? LK.run * .4 : LK.run) + (CONCEPT ? CONCEPT[look] || 0 : 0) + sideAdv;
-    const fum = D.rates.fumble * (c0.toss ? 1.6 : c0.counter ? 1.2 : 1);
+    const adv = S.orat.or + S.drat.dr + (c0.qb ? (L.qb.adj || 0) * .3 : (L.rb.adj || 0) * .6) + (id === 'r_sneak' ? LK.run * .4 : LK.run) + (CONCEPT ? CONCEPT[look] || 0 : 0) + sideAdv + (mods.trickAdv || 0);
+    const fum = D.rates.fumble * (c0.toss ? 1.6 : c0.counter ? 1.2 : 1) * (mods.trick && mods.trick.fum ? mods.trick.fum : 1);
     const [k, rows] = id === 'r_sneak' ? pool('r_sneak') : c0.pool === 'r_qb' ? pool('r_qb_' + z) : pool(`${c0.pool}_${z}${sy}`, `${c0.pool}_${z}N`);
     addPool(k, rows, adv, 1 - fum);
     out.push({ p: fum, y: 1, f: 8, src: null, fumble: true });
@@ -190,16 +232,17 @@ function outcomes(st, id, tgt, mods = {}) {
     // extra blockers: fewer sacks, but fewer receivers to find
     const nb = mods.blockers || 0;
     const lookAdv = c.depth === 'deep' ? LK.deep : LK.short + (id === 'p_rb' && look === 'blitz' ? .05 : 0);
-    const adv = S.orat.op + S.drat.dp + (rec ? rec.adj * .6 : 0) + (mods.pa ? (c.depth === 'deep' ? .04 : -.01) : 0) + (mods.roll ? (c.side === 'side' ? .015 : -.02) : 0) - .012 * nb + lookAdv;
-    const depthF = (id === 'p_rb' ? .55 : c.depth === 'deep' ? 1.35 : .85) * (mods.pa ? 1.3 : 1) * (mods.roll ? .75 : 1) * (1 - .15 * nb) * LK.sack;
-    const intF = (id === 'p_rb' ? .45 : c.depth === 'deep' ? 1.9 : c.side === 'mid' ? 1.05 : .75) * (mods.roll ? .9 : 1) * LK.int;
+    const tk = mods.trick || {};
+    const adv = S.orat.op + S.drat.dp + (rec ? rec.adj * .6 : 0) + (mods.pa ? (c.depth === 'deep' ? .04 : -.01) : 0) + (mods.roll ? (c.side === 'side' ? .015 : -.02) : 0) - .012 * nb + lookAdv + (mods.trickAdv || 0) + (tk.passer === 'rb' ? -(L.qb.adj || 0) * .6 - .02 : 0);
+    const depthF = (id === 'p_rb' ? .55 : c.depth === 'deep' ? 1.35 : .85) * (mods.pa ? 1.3 : 1) * (mods.roll ? .75 : 1) * (1 - .15 * nb) * LK.sack * (tk.sack || 1);
+    const intF = (id === 'p_rb' ? .45 : c.depth === 'deep' ? 1.9 : c.side === 'mid' ? 1.05 : .75) * (mods.roll ? .9 : 1) * LK.int * (tk.int || 1);
     const pSack = clamp((dg === 'L' ? D.rates.sackL : lgSack) * depthF * Math.sqrt((L.qb.sack || lgSack) / lgSack) * (1 + S.drat.dp), .01, .25);
     const pInt = clamp(lgInt * intF * Math.sqrt((L.qb.int || lgInt) / lgInt) * (1 + 2 * S.drat.dp), .004, .12) * (1 - pSack);
     const [sk, srows] = pool('sack_' + z, 'sack_o');
     addPool(sk, srows, 0, pSack * 0.9);
     out.push({ p: pSack * 0.1, y: -8, f: 8 | 16, src: null, strip: true }); // strip sack, defense recovers
-    // the QB pulls it down and runs: a scramble, drawn from real QB carries
-    const pScr = id === 'p_rb' ? 0 : R('scramble', .05) * (mods.roll ? 1.4 : 1) * (look === 'blitz' ? 1.3 : 1) * (1 - pSack - pInt);
+    // the QB pulls it down and runs: a scramble, drawn from real QB carries (not when someone else is throwing)
+    const pScr = id === 'p_rb' || tk.passer ? 0 : R('scramble', .05) * (mods.roll ? 1.4 : 1) * (look === 'blitz' ? 1.3 : 1) * (1 - pSack - pInt);
     if (pScr > 0) { const [qk, qrows] = pool('r_qb_' + z, 'r_qb_o'); const w = tilted(qk, qrows, (L.qb.adj || 0) * .3); qrows.forEach((row, i) => out.push({ p: pScr * w[i], y: row[0], f: row[1] & ~1, src: row, scramble: true })); }
     const ints = D.pools.int;
     const dtd = ints.filter(r => r[1] & 32).length / ints.length;
@@ -270,7 +313,7 @@ function apply(st, id, o) {
   if (ny <= 0 || (o.f & 2 && ny <= 3)) { n.os += 6; n.s += 6; n.ytg = 0; r.td = true; r.yards = st.ytg; r.end = { kind: 'td' }; return { n, r }; }
   if (ny >= 100) { n.ds += 2; n.s -= 2; r.end = { kind: 'opp', oppYtg: 60, why: 'Safety' }; return { n, r }; }
   n.ytg = ny;
-  const incomplete = (id.startsWith('p_') || id === 'hail') && !o.scramble ? !(o.f & 1) && !(o.f & 16) : false;
+  const incomplete = isPassId(id) && !o.scramble && !o.blown ? !(o.f & 1) && !(o.f & 16) : false;
   const oob = !!(o.f & 4);
   if (y >= st.dist) { r.first = true; n.down = 1; n.dist = Math.min(10, ny); }
   else { n.down = st.down + 1; n.dist = st.dist - y; }
@@ -281,7 +324,7 @@ function apply(st, id, o) {
   else if (oob) { n.pending = n.T <= 120 ? 0 : after('el_oob'); r.stop = true; }
   else if (r.first) { n.pending = n.T <= 120 ? Math.min(8, after('el_first')) : after('el_first'); }
   else if (o.f & 16) n.pending = after('el_sack');
-  else if (id.startsWith('p_') || o.scramble) n.pending = after('el_comp_in');
+  else if ((isPassId(id) && !o.blown) || o.scramble) n.pending = after('el_comp_in');
   else n.pending = after('el_rush');
   r.incomplete = incomplete; r.oob = oob;
   if (n.down > 4) { r.end = { kind: 'opp', oppYtg: 100 - ny, why: 'Turnover on downs' }; return { n, r }; }
@@ -324,7 +367,7 @@ function expected(st, id, tgt, mods = {}) {
 function scoreOptions(st) {
   const L = st.sc.lineup, rows = [];
   for (const id of Object.keys(CALLS)) {
-    if (!available(st, id) || id === 'pass' || id === 'run') continue;
+    if (!available(st, id) || CALLS[id].pick) continue;
     const c = CALLS[id];
     if (c.depth) {
       for (const rc of L.rec.filter(r => r.pos !== 'RB')) rows.push({ id, tgt: rc, ev: expected(st, id, rc), label: `${c.label} to ${short(rc.name)}` });
@@ -367,6 +410,11 @@ const QUIPS = {
   oob: ['Out of bounds. The clock stops, the sideline reporter steps back.', 'He got out. The clock is paused. Someone exhales.'],
   nogain: ['No gain. The ball is exactly where it was, which is at least consistent.', 'Zero yards. A play happened and nothing did.'],
   short: ['A few yards. Honest work.', 'Short gain. The box score will remember this as a number.'],
+  trickHit: ['A trick play. It worked, which is the only kind anyone remembers.', 'Drawn up in the dirt, apparently by an architect.', 'The defense is still looking for the ball. It is downfield.'],
+  trickBlown: ['The defense had seen that one. Possibly on television.', 'Blown up. Eight seconds to develop, one to end.', 'The trick did not work, and now everyone has to pretend it was a good idea at the time.'],
+  trickMeh: ['A trick play for a normal gain. All that choreography for a modest number.', 'Trickery, modestly rewarded.', 'It worked, technically. The crowd is not sure what it saw.'],
+  twoGood: ['Two points. Somebody in the booth has a chart and it is vindicated.', 'Converted. The chart was right, which the chart will mention.'],
+  twoFail: ['No good. The chart is being quietly folded.', 'Stopped. Two points were available and are no longer.'],
 };
 function pickQuip(key) { const a = QUIPS[key]; return a ? a[Math.floor(rand() * a.length)] : null; }
 function maybeQuip(o, r, id, mods, st) {
@@ -383,6 +431,8 @@ function maybeQuip(o, r, id, mods, st) {
   else if (o.fumble) key = 'fumble';
   else if (o.f & 16) key = 'sack';
   else if (o.scramble) key = 'scramble';
+  else if (st.twoPt) key = r.td ? 'twoGood' : 'twoFail';
+  else if (CALLS[id].trick) key = o.blown ? 'trickBlown' : (r.td || r.yards >= 15) ? 'trickHit' : r.incomplete ? 'inc' : 'trickMeh';
   else if (id === 'hail') key = (o.f & 1) ? 'hailHit' : 'hailMiss';
   else if (r.td) key = 'td';
   else if (r.incomplete) { const t = (o.src && o.src[4] || '').toLowerCase(); key = t.includes('drop') ? 'drop' : t.includes('broken up') ? 'pbu' : (t.includes('hurried') || t.includes('pressure')) && rand() < 0.5 ? 'thrownaway' : 'inc'; }
@@ -437,7 +487,7 @@ const clock = t => `${Math.floor(t / 60)}:${String(Math.max(0, Math.round(t % 60
 const pct = x => `${Math.round(x * 100)}%`;
 const ord = d => ['', '1st', '2nd', '3rd', '4th'][d] || `${d}th`;
 function spot(ytg, sc) { if (ytg === 50) return 'midfield'; return ytg > 50 ? `${T_(sc.off).abbr} ${100 - ytg}` : `${T_(sc.dfn).abbr} ${ytg}`; }
-function downText(st) { return `${ord(st.down)} & ${st.dist >= st.ytg ? 'goal' : st.dist}`; }
+function downText(st) { return st.twoPt ? 'Two-point try' : `${ord(st.down)} & ${st.dist >= st.ytg ? 'goal' : st.dist}`; }
 function gameLabel(sc) {
   const g = D.games[sc.g];
   const h = T_(g[3]), a = T_(g[4]);
@@ -563,7 +613,7 @@ function newGame(sc, mode, no) {
   G = {
     mode, no, sc, log: [], grades: [], snaps: [],
     st: { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0 },
-    useTO: false, tempo: 'neutral', picking: null, pickerSlot: null, last: null, busy: false, done: null, routes: { ...DEFAULT_ROUTES }, mods: {}, runSide: 'R', aim: null,
+    useTO: false, tempo: 'neutral', picking: null, pickerSlot: null, last: null, busy: false, done: null, routes: { ...DEFAULT_ROUTES }, mods: {}, runSide: 'R', aim: null, twoPt: null,
   };
   G.wp0 = wpModel(G.st.s, G.st.T, G.st.ytg, G.st.down, G.st.dist, G.st.to, G.st.dto, G.st.elo);
 }
@@ -638,6 +688,24 @@ function receivers(sc) {
   return out;
 }
 function routeFor(r) { return G.routes?.[r.slot] || DEFAULT_ROUTES[r.slot] || 'out'; }
+// who a trick play throws to: the best receiver on the field, or the quarterback himself on the Philly Special
+function trickTarget(sc, tc) {
+  if (!tc.base.startsWith('p_')) return null;
+  const L = sc.lineup;
+  if (tc.qbTarget) return { name: L.qb.name, num: L.qb.num, adj: 0, pos: 'QB', slot: 'QB', c: .6, yds: 0 };
+  const wrs = receivers(sc).filter(r => r.pos !== 'RB');
+  return [...wrs].sort((a, b) => (b.adj || 0) - (a.adj || 0))[0] || wrs[0] || receivers(sc)[0];
+}
+// the Philly Special thrower: the tight end if there is one, else a slot receiver
+function phillyThrower(sc) { const R = receivers(sc); return R.find(r => r.slot === 'TE') || R.find(r => r.slot === 'WR2') || R.find(r => r.slot === 'WR1') || R[0]; }
+// the routes a trick play needs from the other receivers (null keeps the player's own choice)
+function trickRoute(id, r, tgt) {
+  const c = CALLS[id]; if (!c || !c.trick || !c.base.startsWith('p_')) return null;
+  const isT = tgt && r.slot === tgt.slot;
+  if (id === 't_hook') return isT ? 'curl' : r.pos === 'RB' ? 'flat' : 'go';
+  if (id === 't_philly') return r.pos === 'RB' ? 'block' : 'go';
+  return isT ? 'go' : r.pos === 'RB' ? 'block' : 'go';
+}
 // SVG path of a route, drawn from the receiver's spot; offense moves +x, sideline is sideDir
 function routePath(r, los, key) {
   const x0 = los - r.dx, y0 = r.y, sd = r.sideDir, mid = y0 > 266 ? -1 : 1;
@@ -752,7 +820,7 @@ function renderPlay() {
   renderSide();
   if (G.anim) { const a = G.anim; requestAnimationFrame(() => requestAnimationFrame(() => { const b = $('#ball'); if (b) b.style.transform = `translate(${100 + (100 - a.to) * 10}px, ${a.y}px)`; })); }
   $('#field').querySelectorAll('[data-rec]').forEach(g => g.onclick = () => cycleRoute(g.dataset.rec));
-  if (G.picking === 'run') {
+  if (G.picking === 'run' && !G.animating) {
     const svg = $('#field svg');
     svg.style.cursor = 'crosshair';
     svg.onclick = e => {
@@ -835,6 +903,22 @@ function renderSide() {
     side.querySelectorAll('[data-call]').forEach(b => b.onclick = () => runPlay(b.dataset.call, null, { ...G.mods, blockers: nb }));
     return;
   }
+  if (G.picking === 'trick') {
+    const rs = G.runSide, L = sc.lineup, look = st.look || 'base';
+    const qb = short(L.qb.name), rb = short(L.rb.name), te = short(phillyThrower(sc).name);
+    const who = { t_flea: `${rb} to ${qb}`, t_hbpass: `${rb} throws`, t_reverse: 'receiver carries', t_jet: 'receiver carries', t_wildcat: `${rb} takes the snap`, t_statue: rb, t_hook: `lateral to ${rb}`, t_philly: `${te} to ${qb}`, t_fakefg: 'holder keeps it', t_fakepunt: 'punter keeps it' };
+    const why = id => { const c = CALLS[id]; if (c.needsFg) return 'Out of field goal range'; if (c.needsPunt) return 'Fourth down only'; return ''; };
+    const read = id => { const t = CALLS[id].tilt[look] || 0; return t >= .02 ? 'The look favors it' : t <= -.02 ? 'Wrong look for it' : ''; };
+    h += `<div class="grp"><div class="h">Trick play <button class="back" id="back">◀ Back</button></div>
+      <div class="note">Every trick in the bag, every down. Each one is a real kind of snap with extra risk stapled on: fakes get bitten on against a loaded box or a blitz, and ignored by a prevent shell. Long-developing plays eat clock.</div>
+      <div class="mods"><span class="gl">Side</span><button class="mod" data-side="L" aria-pressed="${rs === 'L'}">◀ Left</button><button class="mod" data-side="R" aria-pressed="${rs === 'R'}">Right ▶</button><span class="note">${st.look === 'loaded' || st.look === 'blitz' ? `Extra defender on the ${st.lookSide === 'L' ? 'left' : 'right'}.` : ''}</span></div>
+      <div class="calls">${Object.keys(CALLS).filter(id => CALLS[id].trick).map(id => { const c = CALLS[id], ok = available(st, id), rd = ok ? read(id) : why(id); return `<button class="call ${ok ? '' : 'dim'}" data-tcall="${id}" ${ok ? '' : 'disabled'}><b>${esc(c.label)}</b><small>${esc(c.sub)}${who[id] ? ` · ${esc(who[id])}` : ''}${rd ? ` · ${esc(rd)}` : ''}</small></button>`; }).join('')}</div></div>`;
+    side.innerHTML = h;
+    $('#back').onclick = () => { G.picking = null; renderPlay(); };
+    side.querySelectorAll('[data-side]').forEach(b => b.onclick = () => { G.runSide = b.dataset.side; renderSide(); });
+    side.querySelectorAll('[data-tcall]').forEach(b => b.onclick = () => runPlay(b.dataset.tcall, null, { side: G.runSide }));
+    return;
+  }
   h += `<div class="h">Your call <span>${downText(st)} · ${esc(spot(st.ytg, sc))}</span></div>`;
   const lk = LOOKS[st.look || 'base'];
   h += `<div class="look"><span class="gl">Defense</span><b>${esc(lk.label)}</b><small>${esc(lookSub(st))}</small></div>`;
@@ -844,9 +928,11 @@ function renderSide() {
     h += `<div class="toggle col"><div class="row2"><span>Clock running. <b>${G.useTO ? 'Timeout: no time comes off.' : `About ${off}s comes off before the snap.`}</b>${st.to === 0 && !G.useTO ? ' No timeouts left. This is the part where fans yell at the television.' : ''}</span>${st.to > 0 ? `<button id="toBtn" aria-pressed="${G.useTO}">${G.useTO ? 'Timeout called' : `Timeout (${st.to} left)`}</button>` : ''}</div>
       <div class="mods"><span class="gl">Tempo</span>${tempoBtn('hustle', 'Hustle', 'Sprint to the line, snap it fast')}${tempoBtn('neutral', 'Neutral', 'Normal pace')}${tempoBtn('milk', 'Milk it', 'Let the play clock run down')}</div></div>`;
   }
+  if (st.twoPt) h += `<div class="note"><b>Two-point try.</b> One snap from the 3, untimed. Run it, throw it, or get cute. It is graded like every other call.</div>`;
   const groups = {};
   for (const [id, c] of Object.entries(CALLS)) if (c.grp) (groups[c.grp] ||= []).push(id);
   for (const [g, ids] of Object.entries(groups)) {
+    if (st.twoPt && g === 'Clock & kicks') continue;
     h += `<div class="grp"><div class="gl">${g}</div><div class="calls">`;
     for (const id of ids) {
       const c = CALLS[id], ok = available(st, id);
@@ -854,7 +940,7 @@ function renderSide() {
       let sub = c.sub;
       if (id === 'fg') sub = ok ? `${st.ytg + 17}-yard try · ${pct(fgProb(st.ytg, sc.kick))} make rate${sc.kick >= .04 ? ' · strong kicker' : sc.kick <= -.04 ? ' · shaky kicker' : ''}` : 'Out of range';
       if (id === 'run') sub += ` · ${short(sc.lineup.rb.name)}`;
-      h += `<button class="call ${id === 'pass' || id === 'run' ? 'wide' : ''}" data-call="${id}" ${ok ? '' : 'disabled'}><b>${esc(c.label)}</b><small>${esc(sub)}</small></button>`;
+      h += `<button class="call ${c.pick ? 'wide' : ''}" data-call="${id}" ${ok ? '' : 'disabled'}><b>${esc(c.label)}</b><small>${esc(sub)}</small></button>`;
     }
     h += `</div></div>`;
   }
@@ -896,6 +982,34 @@ function coachOpening(sc) {
   return r ? r.c : null;
 }
 
+function narrateTrick(id, o, r, tgt, sc) {
+  const L = sc.lineup, qb = short(L.qb.name), rb = short(L.rb.name), wrs = L.rec.filter(x => x.pos === 'WR'), wr = short((wrs[0] || L.rec[0]).name), wr2 = short(phillyThrower(sc).name);
+  const to = tgt ? short(tgt.name) : wr;
+  const yds = n => `${Math.abs(n)} yard${Math.abs(n) === 1 ? '' : 's'}`;
+  const gain = r.yards < 0 ? `a loss of ${yds(r.yards)}` : r.yards === 0 ? 'no gain' : yds(r.yards);
+  const tail = (r.td ? ' Touchdown!' : '') + (r.oob ? ' Out of bounds.' : '') + (r.first && !r.td ? ' First down.' : '');
+  if (o.lateralLost) return `Hook and ladder: ${to} catches it and the lateral to ${rb} hits the ground. Defense recovers.`;
+  if (o.scramble) return `${CALLS[id].label}: nothing there, so ${qb} pulls it down and runs for ${gain}.${tail}`;
+  if (o.blown && o.fumble) return `${CALLS[id].label}: blown up in the backfield and the ball comes out. Defense recovers.`;
+  if (o.blown) return `${CALLS[id].label}: the defense doesn't bite. Blown up for a loss of ${yds(o.y)}.`;
+  if (o.strip) return `${CALLS[id].label}: the throw never comes. Strip sack, defense recovers.`;
+  if (o.f & 16) return `${CALLS[id].label}: it takes too long. Sacked for a loss of ${yds(o.y)}.`;
+  if (o.int) return (o.f & 32) ? `${CALLS[id].label}: the throw is picked off and returned for a touchdown.` : `${CALLS[id].label}: the throw is intercepted.`;
+  if (o.fumble) return `${CALLS[id].label}: the exchange is fumbled. Defense recovers.`;
+  switch (id) {
+    case 't_flea': return (o.f & 1) ? `Flea flicker: ${rb} takes it, pitches back, and ${qb} hits ${to} deep for ${gain}.${tail}` : `Flea flicker: ${rb} pitches it back and ${qb}'s deep ball to ${to} falls incomplete.`;
+    case 't_hbpass': return (o.f & 1) ? `Halfback pass: ${rb} pulls up and finds ${to} for ${gain}.${tail}` : `Halfback pass: ${rb} pulls up and throws it over ${to}'s head.`;
+    case 't_reverse': return `Reverse: ${rb} hands it to ${wr} going the other way, ${gain}.${tail}`;
+    case 't_jet': return `Jet sweep to ${wr} for ${gain}.${tail}`;
+    case 't_wildcat': return `Wildcat: direct snap to ${rb}, ${gain}.${tail}`;
+    case 't_statue': return `Statue of Liberty: ${qb} fakes the throw and ${rb} takes it behind his back for ${gain}.${tail}`;
+    case 't_hook': return (o.f & 1) ? `Hook and ladder: ${to} catches it and laterals to ${rb}, ${gain} in all.${tail}` : `Hook and ladder: the first pass to ${to} is incomplete. The lateral never happens.`;
+    case 't_philly': return (o.f & 1) ? `Philly Special: ${rb} pitches to ${wr2}, who throws to ${qb} for ${gain}.${tail}` : `Philly Special: ${wr2}'s throw to ${qb} is off the mark.`;
+    case 't_fakefg': return `Fake field goal: the holder keeps it, ${gain}.${tail}`;
+    case 't_fakepunt': return `Fake punt, ${gain}.${tail}`;
+  }
+  return `${CALLS[id].label} for ${gain}.${tail}`;
+}
 function narrate(id, o, r, tgt, sc, mods = {}) {
   const L = sc.lineup, qb = short(L.qb.name), rb = short(L.rb.name), c = CALLS[id];
   const to = tgt ? short(tgt.name) : 'the back';
@@ -905,6 +1019,7 @@ function narrate(id, o, r, tgt, sc, mods = {}) {
   if (o.spike) return `${qb} spikes it. Clock stopped.`;
   if (o.kneel) return `${qb} takes a knee.`;
   if (o.flag) { const [y, kind] = o.pen; return `Flag: ${kind} on the ${y > 0 ? 'defense' : 'offense'}, ${Math.abs(y)} yards${o.pen[2] ? ', automatic first down' : o.pen[3] ? ', loss of down' : y < 0 ? ', replay the down' : ''}.`; }
+  if (c.trick) return narrateTrick(id, o, r, tgt, sc);
   if (o.scramble) return `${qb} pulls it down and scrambles for ${r.yards < 0 ? 'a loss of ' + yds(r.yards) : r.yards === 0 ? 'no gain' : yds(r.yards)}.${(r.td ? ' Touchdown!' : '') + (r.oob ? ' Out of bounds.' : '') + (r.first && !r.td ? ' First down.' : '')}`;
   if (o.strip) return `${qb} is strip-sacked and the defense recovers.`;
   if (o.f & 16) return `${qb} is sacked for a loss of ${yds(o.y)}.`;
@@ -930,6 +1045,8 @@ function runPlay(id, tgt, mods = {}) {
   if (G.busy) return;
   const sc = G.sc;
   let st = { ...G.st };
+  if (st.twoPt) return runTwoPoint(id, tgt, mods);
+  if (CALLS[id].trick && !tgt) tgt = trickTarget(sc, CALLS[id]);
   // clock between snaps: timeout, or the tempo you chose (hustle to the line, neutral, milk it)
   if (st.pending > 0) {
     if (G.useTO && st.to > 0) { st.to -= 1; G.log.push({ sit: clock(st.T), text: `${T_(sc.off).abbr} timeout` }); }
@@ -947,7 +1064,7 @@ function runPlay(id, tgt, mods = {}) {
   let played = o;
   if (!o.fg && !o.punt && !o.spike && !o.kneel && rand() < R('pen', .057)) {
     const pre = rand() < R('pen_pre_share', .45);
-    const poolKey = pre ? 'pen_pre' : (id.startsWith('p_') || id === 'hail' ? 'pen_pass' : 'pen_run');
+    const poolKey = pre ? 'pen_pre' : (isPassId(id) ? 'pen_pass' : 'pen_run');
     const rows = D.pools[poolKey] || D.pools.pen_pre || [[-5, 'False Start', 0, 0]];
     const row = rows[Math.floor(rand() * rows.length)];
     o = { flag: true, pre, pen: row, y: 0, f: 0, src: null };
@@ -956,13 +1073,9 @@ function runPlay(id, tgt, mods = {}) {
   if (mods.route) st = { ...st, T: Math.max(0, st.T - ROUTES[mods.route].dur) };
   const { n, r } = apply(st, id, o);
   // the defender who made the play, by what happened
-  const isPassPlay = (id.startsWith('p_') || id === 'hail') && !o.scramble;
-  const who = o.flag ? null : o.strip || (o.f & 16) ? pickDefender(sc, 'sack') : o.int ? pickDefender(sc, 'int') : o.fumble ? pickDefender(sc, 'run')
-    : (r.incomplete && !o.spike) ? ((o.src && o.src[4] || '').toLowerCase().includes('broken up') ? pickDefender(sc, 'pbu') : null)
-    : (!r.td && !r.oob && !o.fg && !o.spike && !o.kneel && !o.punt) ? pickDefender(sc, isPassPlay ? 'pass' : 'run') : null;
+  const who = whoMadeIt(sc, id, o, r);
   mods.who = who;
-  let text = narrate(id, o, r, tgt, sc, mods);
-  if (who) text += o.strip || (o.f & 16) ? ` ${defName(who)} got home.` : o.int ? ` ${defName(who)} with the pick.` : o.fumble ? ` ${defName(who)} forced it.` : r.incomplete ? ` ${defName(who)} broke it up.` : ` Tackle by ${defName(who)}.`;
+  let text = narrate(id, o, r, tgt, sc, mods) + whoText(who, o, r);
   const sit = `${downText(st)} ${spot(st.ytg, sc)} ${clock(st.T)}`;
   G.log.push({ sit, text });
   const ev = expected(st, id, tgt, mods);
@@ -979,12 +1092,9 @@ function runPlay(id, tgt, mods = {}) {
   G.grades.push(grade.e);
   const coachCall = G.st.snaps === 0 ? coachOpening(sc) : null;
   const callLabel = mods.route ? `${ROUTES[mods.route].label} to ${short(tgt.name)}` : tgt ? `${CALLS[id].label} to ${short(tgt.name)}` : CALLS[id].run && mods.side && !['r_sneak', 'r_in', 'r_draw'].includes(id) ? `${CALLS[id].label} ${mods.side === 'L' ? 'left' : 'right'}` : CALLS[id].label;
-  G.snaps.push({ sit: `${downText(st)} · ${spot(st.ytg, sc)} · ${clock(st.T)}`, call: callLabel + (mods.pa ? ' (play action)' : mods.roll ? ' (roll out)' : ''), text, wpBefore, wpAfter: r.end ? endValue(n, r.end) : contValue(n), e: grade.e, best: opts[0]?.label, kind: id.startsWith('p_') || id === 'hail' ? 'pass' : id.startsWith('r_') ? 'run' : id, down: st.down, dist: st.dist, deep: CALLS[id].depth === 'deep' || id === 'hail', short: mods.route ? ROUTES[mods.route].label : CALLS[id].label });
+  G.snaps.push({ sit: `${downText(st)} · ${spot(st.ytg, sc)} · ${clock(st.T)}`, call: callLabel + (mods.pa ? ' (play action)' : mods.roll ? ' (roll out)' : ''), text, wpBefore, wpAfter: r.end ? endValue(n, r.end) : contValue(n), e: grade.e, best: opts[0]?.label, kind: isPassId(id) ? 'pass' : (id.startsWith('r_') || CALLS[id].trick) ? 'run' : id, down: st.down, dist: st.dist, deep: CALLS[id].depth === 'deep' || id === 'hail' || (CALLS[id].trick && CALLS[id].base.startsWith('p_deep') && st.ytg > 20), short: mods.route ? ROUTES[mods.route].label : CALLS[id].label, trick: !!CALLS[id].trick });
   const wpAfter = r.end ? endValue(n, r.end) : contValue(n);
-  let badge = o.flag ? 'FLAG' : r.td ? 'TD' : o.fg ? (o.made ? 'FG' : 'NO') : (o.f & 8) ? 'TO' : o.spike ? 'SPK' : (r.incomplete ? 'INC' : (r.yards > 0 ? '+' : '') + r.yards);
-  let title = o.flag ? `${o.pen[1]}, ${o.pen[0] > 0 ? 'defense' : 'offense'}` : r.td ? 'Touchdown' : o.fg ? (o.made ? 'Field goal good' : 'Field goal missed') : o.int ? 'Intercepted' : o.strip ? 'Strip sack' : o.fumble ? 'Fumble' : (o.f & 16) ? 'Sacked' : o.spike ? 'Spiked' : r.incomplete ? 'Incomplete' : r.first ? 'First down' : (r.end?.why || (r.yards === 0 ? 'No gain' : r.yards < 0 ? `Loss of ${-r.yards}` : `${r.yards} yard${r.yards === 1 ? '' : 's'}`));
-  if (r.end?.kind === 'opp' && !o.int && !o.fumble && !o.strip && !o.fg) title = r.end.why;
-  if (!r.end && !o.spike && !o.flag) title += n.pending > 0 ? ', clock running' : ', clock stopped';
+  const { badge, title } = badgeTitle(o, r, n);
   const g = o.src ? D.games[o.src[3]] : null;
   const quip = maybeQuip(o, r, id, mods, st) || (G.tempoQuip ? (G.tempoQuip === 'milk' ? pickQuip('milk') : pickQuip('hustle')) : null);
   G.tempoQuip = null;
@@ -993,29 +1103,9 @@ function runPlay(id, tgt, mods = {}) {
     good: r.td || (o.fg && o.made) || r.first, bad: !!(o.f & 8) || (o.fg && !o.made) || (o.f & 16),
     real: o.src && o.src[4] ? `${o.src[4]} (${T_(g[4]).school} ${g[5] ? 'vs' : 'at'} ${T_(g[3]).school}, ${g[0]})` : null,
   };
-  const isPass = id.startsWith('p_') || id === 'hail';
   G.last = null; G.anim = null; G.picking = null; G.pickerSlot = null; G.aim = null;
   // Animate the snap from the pre-snap state, then land the result
-  // animate the play that happened on the field (a live-ball flag shows the play, then the flag)
-  const shown = o.flag && !o.pre ? played : o;
-  const srcText = shown.src && shown.src[4] ? shown.src[4].toLowerCase() : '';
-  const shownR = o.flag && !o.pre ? apply(st, id, played).r : r;
-  const finalYtg = o.flag ? (o.pre ? st.ytg : clamp(st.ytg - (shownR.yards || 0), 0, 100)) : r.end?.kind === 'opp' ? clamp(100 - r.end.oppYtg, 0, 100) : n.ytg;
-  const spec = {
-    kind: o.flag && o.pre ? 'flag' : shown.fg ? 'fg' : shown.punt ? 'punt' : shown.spike ? 'spike' : shown.kneel ? 'kneel' : (isPass && !shown.scramble) ? 'pass' : 'run',
-    flag: o.flag ? { pre: o.pre, kind: o.pen[1], onDefense: o.pen[0] > 0 } : null, look: st.look || 'base', scramble: !!shown.scramble,
-    air: shown.src && shown.src.length > 5 && shown.src[5] != null ? shown.src[5] : null,
-    los: 100 + (100 - st.ytg) * 10, routes: ROUTES, recs: receivers(sc).map(x => ({ ...x, route: routeFor(x) })),
-    qb: sc.lineup.qb, rb: sc.lineup.rb, offColor: T_(sc.off).color, offAlt: T_(sc.off).alt, defColor: T_(sc.dfn).color, defAlt: T_(sc.dfn).alt,
-    targetSlot: tgt ? tgt.slot : null, rbTarget: id === 'p_rb', depth: CALLS[id].depth || (id === 'p_rb' ? 'short' : null), hail: id === 'hail',
-    pa: !!mods.pa, roll: !!mods.roll, sack: !!(shown.f & 16), strip: !!shown.strip, int: !!shown.int, intTd: !!(shown.f & 32), complete: !!(shown.f & 1),
-    td: shownR.td, oob: shownR.oob, yards: shownR.yards, first: shownR.first, finalYtg: shownR.td ? 0 : finalYtg, fumble: !!shown.fumble,
-    outside: CALLS[id].lane === 'out', qbRun: !!CALLS[id].qb || !!shown.scramble, sneak: id === 'r_sneak', made: !!shown.made,
-    runType: CALLS[id].run ? id : null, side: mods.side === 'L' ? -1 : 1, aim: mods.aim || null, lane: mods.lane || CALLS[id].lane || null,
-    dropped: !(shown.f & 1) && !shown.int && srcText.includes('drop'), pbu: srcText.includes('broken up'), contested: srcText.includes('contested'),
-    hurried: srcText.includes('hurried') || srcText.includes('pressure'),
-    dlineup: sc.dlineup || [], whoNum: who ? who.num : null,
-  };
+  const spec = animSpec(st, id, tgt, mods, o, played, r, n, who);
   G.busy = true; G.animating = true; G.st = st; renderPlay();
   const box = $('#field');
   spec.clock = { from: st.T, to: n.T, el: $('.bug .clock .t') }; // the game clock ticks while the play runs
@@ -1026,6 +1116,125 @@ function runPlay(id, tgt, mods = {}) {
     G.animating = false; G.busy = false; G.st = n; G.last = newLast;
     if (r.end) { renderPlay(); G.busy = true; setTimeout(() => { G.busy = false; finish(r.end, n); }, 900); }
     else renderPlay();
+  });
+}
+
+// the defender who made the play, by what happened
+function whoMadeIt(sc, id, o, r) {
+  const isPassPlay = isPassId(id) && !o.scramble && !o.blown;
+  return o.flag ? null : o.strip || (o.f & 16) ? pickDefender(sc, 'sack') : o.int ? pickDefender(sc, 'int') : o.fumble ? pickDefender(sc, 'run')
+    : (r.incomplete && !o.spike) ? ((o.src && o.src[4] || '').toLowerCase().includes('broken up') ? pickDefender(sc, 'pbu') : null)
+    : (!r.td && !r.oob && !o.fg && !o.spike && !o.kneel && !o.punt) ? pickDefender(sc, isPassPlay ? 'pass' : 'run') : null;
+}
+function whoText(who, o, r) {
+  if (!who) return '';
+  return o.strip || (o.f & 16) ? ` ${defName(who)} got home.` : o.int ? ` ${defName(who)} with the pick.` : o.lateralLost ? ` ${defName(who)} fell on it.` : o.fumble ? ` ${defName(who)} forced it.` : r.incomplete ? ` ${defName(who)} broke it up.` : ` Tackle by ${defName(who)}.`;
+}
+function badgeTitle(o, r, n) {
+  const badge = o.flag ? 'FLAG' : r.td ? 'TD' : o.fg ? (o.made ? 'FG' : 'NO') : (o.f & 8) ? 'TO' : o.spike ? 'SPK' : (r.incomplete ? 'INC' : (r.yards > 0 ? '+' : '') + r.yards);
+  let title = o.flag ? `${o.pen[1]}, ${o.pen[0] > 0 ? 'defense' : 'offense'}` : r.td ? 'Touchdown' : o.fg ? (o.made ? 'Field goal good' : 'Field goal missed') : o.int ? 'Intercepted' : o.strip ? 'Strip sack' : o.fumble ? 'Fumble' : (o.f & 16) ? 'Sacked' : o.spike ? 'Spiked' : r.incomplete ? 'Incomplete' : r.first ? 'First down' : o.blown ? 'Blown up' : (r.end?.why || (r.yards === 0 ? 'No gain' : r.yards < 0 ? `Loss of ${-r.yards}` : `${r.yards} yard${r.yards === 1 ? '' : 's'}`));
+  if (r.end?.kind === 'opp' && !o.int && !o.fumble && !o.strip && !o.fg) title = r.end.why;
+  if (!r.end && !o.spike && !o.flag) title += n.pending > 0 ? ', clock running' : ', clock stopped';
+  return { badge, title };
+}
+// What the animation needs to know: the play that happened on the field (a live-ball flag shows the play, then the flag)
+function animSpec(st, id, tgt, mods, o, played, r, n, who) {
+  const sc = G.sc, c = CALLS[id], isPass = isPassId(id);
+  const shown = o.flag && !o.pre ? played : o;
+  const srcText = shown.src && shown.src[4] ? shown.src[4].toLowerCase() : '';
+  const shownR = o.flag && !o.pre ? apply(st, id, played).r : r;
+  const finalYtg = o.flag ? (o.pre ? st.ytg : clamp(st.ytg - (shownR.yards || 0), 0, 100)) : r.end?.kind === 'opp' ? clamp(100 - r.end.oppYtg, 0, 100) : n.ytg;
+  const trickDeep = c.trick && isPass && c.base.startsWith('p_deep') && st.ytg > 20;
+  return {
+    kind: o.flag && o.pre ? 'flag' : shown.fg ? 'fg' : shown.punt ? 'punt' : shown.spike ? 'spike' : shown.kneel ? 'kneel' : (isPass && (!shown.scramble || c.trick)) ? 'pass' : 'run',
+    flag: o.flag ? { pre: o.pre, kind: o.pen[1], onDefense: o.pen[0] > 0 } : null, look: st.look || 'base', scramble: !!shown.scramble,
+    air: shown.src && shown.src.length > 5 && shown.src[5] != null ? shown.src[5] : null,
+    los: 100 + (100 - st.ytg) * 10, routes: ROUTES, recs: receivers(sc).map(x => ({ ...x, route: trickRoute(id, x, tgt) || routeFor(x) })),
+    qb: sc.lineup.qb, rb: sc.lineup.rb, offColor: T_(sc.off).color, offAlt: T_(sc.off).alt, defColor: T_(sc.dfn).color, defAlt: T_(sc.dfn).alt,
+    targetSlot: tgt ? tgt.slot : null, rbTarget: id === 'p_rb', depth: c.depth || (id === 'p_rb' ? 'short' : c.trick && isPass ? (trickDeep ? 'deep' : 'short') : null), hail: id === 'hail',
+    pa: !!mods.pa, roll: !!mods.roll, sack: !!(shown.f & 16) || (!!shown.blown && isPass), strip: !!shown.strip || (!!shown.blown && !!shown.fumble && isPass), int: !!shown.int, intTd: !!(shown.f & 32), complete: !!(shown.f & 1) || !!shown.lateralLost,
+    td: shownR.td, oob: shownR.oob, yards: shownR.yards, first: shownR.first, finalYtg: shownR.td ? 0 : finalYtg, fumble: !!shown.fumble,
+    outside: c.lane === 'out' || (c.trick && c.base === 'r_out'), qbRun: !!c.qb || !!shown.scramble, sneak: id === 'r_sneak', made: !!shown.made,
+    runType: c.run ? id : c.trick && !isPass ? c.base : null, side: mods.side === 'L' ? -1 : 1, aim: mods.aim || null, lane: mods.lane || c.lane || null,
+    dropped: !(shown.f & 1) && !shown.int && srcText.includes('drop'), pbu: srcText.includes('broken up'), contested: srcText.includes('contested'),
+    hurried: srcText.includes('hurried') || srcText.includes('pressure'),
+    trick: c.trick ? id : null, blown: !!shown.blown, lateral: !!shown.lateral, lateralLost: !!shown.lateralLost, passerSlot: id === 't_philly' ? phillyThrower(sc).slot : null,
+    twoPt: !!st.twoPt,
+    dlineup: sc.dlineup || [], whoNum: who ? who.num : null,
+  };
+}
+
+// ---------- the two-point try: a real snap from the 3 ----------
+// Every option's conversion chance comes from the real goal-line pools, then the board is anchored so its average
+// is the measured college two-point rate; the relative order of the calls is what the pools say.
+function twoOptions(st) {
+  const sc = st.sc, rows = [];
+  const succ = (id, tgt) => { let p = 0, tot = 0; for (const o of outcomes(st, id, tgt)) { tot += o.p; if (!(o.f & 8) && (o.y >= st.ytg || (o.f & 2))) p += o.p; } return tot > 0 ? p / tot : 0; };
+  for (const id of Object.keys(CALLS)) {
+    if (!available(st, id) || CALLS[id].pick) continue;
+    const c = CALLS[id];
+    if (c.depth) { for (const rc of receivers(sc).filter(r => r.pos !== 'RB')) rows.push({ id, tgt: rc, p: succ(id, rc), label: `${c.label} to ${short(rc.name)}` }); }
+    else if (id === 'p_rb') { const rb = receivers(sc).find(r => r.pos === 'RB'); if (rb) rows.push({ id, tgt: rb, p: succ(id, rb), label: `Screen to ${short(rb.name)}` }); }
+    else rows.push({ id, p: succ(id), label: c.label });
+  }
+  const core = rows.filter(r => !CALLS[r.id].trick);
+  const mean = core.reduce((a, r) => a + r.p, 0) / Math.max(1, core.length);
+  const k = mean > 0 ? TWO / mean : 1;
+  for (const r of rows) r.p = clamp(r.p * k, 0.02, 0.95);
+  return rows.sort((a, b) => b.p - a.p);
+}
+function startTwoPoint(n) {
+  G.twoPt = { n: { ...n } };
+  G.st = { ...n, ytg: 3, down: 1, dist: 3, pending: 0, look: null, twoPt: true };
+  G.last = null; G.anim = null; G.picking = null; G.useTO = false;
+  renderPlay();
+}
+function runTwoPoint(id, tgt, mods = {}) {
+  const sc = G.sc, st = { ...G.st }, base = G.twoPt.n;
+  if (CALLS[id].trick && !tgt) tgt = trickTarget(sc, CALLS[id]);
+  const a2 = afterScore(base, base.s + 2).best, a0 = afterScore(base, base.s).best;
+  const opts = twoOptions(st).map(o => ({ ...o, ev: o.p * a2 + (1 - o.p) * a0 }));
+  const mine = opts.find(o => o.id === id && (!o.tgt || !tgt || o.tgt.slot === tgt.slot)) || { p: TWO, ev: TWO * a2 + (1 - TWO) * a0 };
+  const ok = rand() < mine.p;
+  // then a real snap that matches: a conversion, or a stop
+  const conv = o => !(o.f & 8) && (o.y >= st.ytg || (o.f & 2));
+  const all = outcomes(st, id, tgt, mods).filter(o => o.p > 0);
+  let rows = all.filter(o => conv(o) === ok);
+  if (!rows.length) rows = ok ? [{ p: 1, y: 3, f: isPassId(id) ? 3 : 2, src: null }] : [{ p: 1, y: isPassId(id) ? 0 : 1, f: 0, src: null }];
+  let u = rand() * rows.reduce((a, o) => a + o.p, 0), o = rows[rows.length - 1];
+  for (const d of rows) { u -= d.p; if (u <= 0) { o = d; break; } }
+  G.prevYtg = 3;
+  const { n, r } = apply(st, id, o);
+  const who = whoMadeIt(sc, id, o, r);
+  mods.who = who;
+  const text = (narrate(id, o, r, tgt, sc, mods) + whoText(who, o, r)).replace(/ Touchdown!/g, ' Two points!');
+  G.log.push({ sit: '2PT', text: (ok ? 'Two-point try is good. ' : 'Two-point try fails. ') + text });
+  const gap = opts[0].ev - mine.ev, pts = Math.max(1, Math.round(gap * 100));
+  const grade = gap <= 0.005 ? { cls: '', text: '✓ The best call on the board.', e: '🟩' }
+    : gap <= 0.03 ? { cls: 'mid', text: `Close, not correct. ${esc(opts[0].label)} was worth ${pts} more point${pts > 1 ? 's' : ''} of win chance.`, e: '🟨' }
+    : { cls: 'low', text: `Wrong. ${esc(opts[0].label)} was worth ${pts} more points of win chance.`, e: '🟥' };
+  G.grades.push(grade.e);
+  const callLabel = tgt ? `${CALLS[id].label} to ${short(tgt.name)}` : CALLS[id].label;
+  const wpBefore = TWO * a2 + (1 - TWO) * a0, wpAfter = ok ? a2 : a0;
+  G.snaps.push({ sit: 'Two-point try · from the 3', call: callLabel, text, wpBefore, wpAfter, e: grade.e, best: opts[0].label, kind: isPassId(id) ? 'pass' : 'run', down: 1, dist: 3, deep: false, short: CALLS[id].label, trick: !!CALLS[id].trick, twoPt: true });
+  const g = o.src ? D.games[o.src[3]] : null;
+  const quip = maybeQuip(o, r, id, mods, st);
+  const r2 = { ...r, td: ok, first: false };
+  const { badge, title } = badgeTitle(o, r2, { pending: 0 });
+  const newLast = { id, tgt, opts, coachCall: null, grade, wpBefore, wpAfter, text, title: ok ? 'Two-point conversion good' : `No good: ${title.replace(/, clock (running|stopped)$/, '')}`, badge: ok ? '+2' : badge === 'TD' ? 'NO' : badge, quip,
+    good: ok, bad: !ok, real: o.src && o.src[4] ? `${o.src[4]} (${T_(g[4]).school} ${g[5] ? 'vs' : 'at'} ${T_(g[3]).school}, ${g[0]})` : null };
+  G.last = null; G.anim = null; G.picking = null; G.pickerSlot = null; G.aim = null;
+  const spec = animSpec(st, id, tgt, mods, o, o, r2, { ...n, ytg: ok ? 0 : Math.max(1, 3 - (r.yards || 0)) }, who);
+  spec.td = ok; spec.finalYtg = ok ? 0 : clamp(3 - (r.yards || 0), 1, 20); spec.twoPt = true;
+  G.busy = true; G.animating = true; G.st = st; renderPlay();
+  const box = $('#field');
+  if (window.Sound) Sound.play('snap');
+  PlayAnim.play(box, spec).then(() => {
+    if (window.Sound) Sound.play(ok ? 'score' : (o.f & 8) ? 'turnover' : 'thud');
+    const n2 = { ...base, os: base.os + (ok ? 2 : 0), s: base.s + (ok ? 2 : 0), snaps: base.snaps + 1 };
+    G.twoPt = null; G.animating = false; G.busy = false; G.st = n2; G.last = newLast;
+    renderPlay(); G.busy = true;
+    setTimeout(() => { G.busy = false; kickChoice(n2, ok ? 'Two-point conversion good.' : 'Two-point try failed.'); }, 900);
   });
 }
 
@@ -1041,7 +1250,7 @@ function patChoice(n) {
   const two = TWO * afterScore(n, n.s + 2).best + (1 - TWO) * afterScore(n, n.s).best;
   sideDecision(n, 'Touchdown! Now the extra point.', [
     { label: 'Kick the extra point', sub: `${pct(XP)} conversion · win chance ${pct(kick)}`, go: () => { const ok = rand() < XP; n.os += ok ? 1 : 0; n.s += ok ? 1 : 0; G.log.push({ sit: 'PAT', text: ok ? 'Extra point is good.' : 'Extra point is no good.' }); kickChoice(n, ok ? 'Extra point good.' : 'Extra point missed.'); } },
-    { label: 'Go for two', sub: `${pct(TWO)} conversion · win chance ${pct(two)}`, go: () => { const ok = rand() < TWO; n.os += ok ? 2 : 0; n.s += ok ? 2 : 0; G.log.push({ sit: '2PT', text: ok ? 'Two-point try is good.' : 'Two-point try fails.' }); kickChoice(n, ok ? 'Two-point conversion good.' : 'Two-point try failed.'); } },
+    { label: 'Go for two', sub: `${pct(TWO)} conversion · win chance ${pct(two)} · you call the play from the 3`, go: () => startTwoPoint(n) },
   ]);
 }
 function kickChoice(n, msg) {
@@ -1117,7 +1326,7 @@ function simulateCallers(sc, N, onProgress, onDone) {
       for (const d of dist) { v -= d.p; if (v <= 0) { o = d; break; } }
       if (!o.fg && !o.punt && !o.spike && !o.kneel && rand() < R('pen', .057)) {
         const pre = rand() < R('pen_pre_share', .45);
-        const rows = D.pools[pre ? 'pen_pre' : (pick.id.startsWith('p_') ? 'pen_pass' : 'pen_run')] || [[-5, 'False Start', 0, 0]];
+        const rows = D.pools[pre ? 'pen_pre' : (isPassId(pick.id) ? 'pen_pass' : 'pen_run')] || [[-5, 'False Start', 0, 0]];
         o = { flag: true, pre, pen: rows[Math.floor(rand() * rows.length)], y: 0, f: 0, src: null };
       }
       const { n, r } = apply(st, pick.id, o);
