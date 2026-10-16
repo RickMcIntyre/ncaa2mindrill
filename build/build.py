@@ -190,9 +190,16 @@ pos_df = pd.concat(pos_rows)
 POS = pos_df.groupby(['off_id', 'name']).pos.agg(lambda x: x.value_counts().index[0]).to_dict()
 # jersey numbers from game rosters
 JERSEY = {}
+# game rosters by position (ESPN position ids: 1 WR, 7 TE, 8 QB, 9 RB), so a grouping like 13 personnel can be
+# filled with real tight ends even when only one of them ever caught a pass
+ESPN_POS = {'1': 'WR', '7': 'TE', '8': 'QB', '9': 'RB'}
+RGAME = {}
 for y in YEARS:
-    ro = pd.read_parquet(RAW + f'rost_{y}.parquet', columns=['team_id', 'full_name', 'jersey'])
-    ro = ro.dropna().drop_duplicates(['team_id', 'full_name'], keep='last')
+    ro = pd.read_parquet(RAW + f'rost_{y}.parquet', columns=['team_id', 'full_name', 'jersey', 'position_href', 'game_id', 'did_not_play'])
+    ro['pos'] = ro.position_href.str.extract(r'positions/(\d+)')[0].map(ESPN_POS)
+    for r in ro[ro.pos.notna() & (ro.did_not_play != True)].itertuples(index=False):
+        RGAME.setdefault((int(r.game_id), int(r.team_id)), []).append((r.full_name, r.pos))
+    ro = ro[['team_id', 'full_name', 'jersey']].dropna().drop_duplicates(['team_id', 'full_name'], keep='last')
     for r in ro.itertuples(index=False):
         JERSEY[(y, int(r.team_id), r.full_name)] = str(r.jersey)
 
@@ -205,6 +212,10 @@ rus = ru.groupby(['year', 'off_id', 'rush_player']).agg(n=('EPA', 'size'), epa=(
 qbs = sc[sc.kind == 'pass'].groupby(['year', 'off_id', 'passer_player_name']).agg(n=('EPA', 'size'), epa=('EPA', 'mean'),
                                                                                    ints=('is_int', 'mean'), sacks=('is_sack', 'mean'))
 lg_tgt = tg.groupby('pos').EPA.mean().to_dict()
+LG_RB_C = float(tg[tg.pos == 'RB'].complete.mean()) if (tg.pos == 'RB').any() else 0.75
+LG_RB_YDS = float(tg[tg.pos == 'RB'].yg.mean()) if (tg.pos == 'RB').any() else 5.0
+LG_C = tg.groupby('pos').complete.mean().to_dict()
+LG_YDS = tg.groupby('pos').yg.mean().to_dict()
 lg_int = sc[sc.kind == 'pass'].is_int.mean()
 lg_sack = sc[sc.kind == 'pass'].is_sack.mean()
 REC_IDX = set(rec.index.droplevel(2))
@@ -243,8 +254,9 @@ def lineup(year, tid, gid):
         out['qb'] = dict(name=qname, num='', epa=0, n=0, int=round(lg_int, 3), sack=round(lg_sack, 3), adj=0)
     recs = rec.loc[(year, tid)] if (year, tid) in REC_IDX else pd.DataFrame()
     in_game = set(gp.receiver_player_name.dropna()) | set(gp.rush_player.dropna())
+    # a deep enough skill group for every personnel grouping (10 through 22): 4 WR, 3 TE, 2 RB
     picks = []
-    for pos, k in (('WR', 3), ('TE', 1), ('RB', 1)):
+    for pos, k in (('WR', 4), ('TE', 3), ('RB', 2)):
         if not len(recs):
             break
         sub = recs[(recs.pos == pos) & recs.index.isin(in_game)].sort_values('n', ascending=False).head(k)
@@ -254,8 +266,25 @@ def lineup(year, tid, gid):
         for name, r in sub.iterrows():
             picks.append(dict(name=name, num=num(year, tid, name), pos=pos, n=int(r.n), c=round(r.c, 2), yds=round(r.yds, 1),
                               adj=round(shrink(r.epa, r.n, lg_tgt.get(pos, 0), 40) - lg_tgt.get(pos, 0), 3)))
-    out['rec'] = picks
     rr = rus.loc[(year, tid)] if (year, tid) in RUS_IDX else pd.DataFrame()
+    # a second back who never got a target still exists: take him from the rushing table with league receiving numbers
+    have_rb = [x['name'] for x in picks if x['pos'] == 'RB']
+    if len(rr) and len(have_rb) < 2:
+        extra = rr[(rr.pos == 'RB') & ~rr.index.isin(have_rb)].sort_values('n', ascending=False).head(2 - len(have_rb))
+        for name, r in extra.iterrows():
+            picks.append(dict(name=name, num=num(year, tid, name), pos='RB', n=0, c=round(LG_RB_C, 2), yds=round(LG_RB_YDS, 1), adj=0))
+    # still short? the game roster has the bodies (no season numbers: league-average hands, no rating)
+    have = {x['name'] for x in picks}
+    for pos, k in (('WR', 4), ('TE', 3), ('RB', 2)):
+        short_by = k - sum(1 for x in picks if x['pos'] == pos)
+        for name, rp in RGAME.get((int(gid), int(tid)), []):
+            if short_by <= 0:
+                break
+            if rp != pos or name in have:
+                continue
+            have.add(name); short_by -= 1
+            picks.append(dict(name=name, num=num(year, tid, name), pos=pos, n=0, c=round(LG_C.get(pos, 0.6), 2), yds=round(LG_YDS.get(pos, 8.0), 1), adj=0))
+    out['rec'] = picks
     rb = rr[(rr.pos == 'RB') & rr.index.isin(in_game)].sort_values('n', ascending=False) if len(rr) else rr
     if len(rr) and not len(rb):
         rb = rr[rr.pos == 'RB'].sort_values('n', ascending=False)

@@ -491,6 +491,7 @@
         continue;
       }
       if (a.manual) { if (a.down) a.stop(dt); continue; } // the trick moves this one
+      if (isRun && a.pos === 'RB' && a !== sc.carrier && sc.hole && !sc.trick && after > 0.15) { a.seek(sc.hole.x + 30, sc.hole.y + (a.y > sc.hole.y ? 10 : -10), dt, 0.95); continue; } // the fullback leads through the hole
       if (a.blocking) { a.seek(a.x - 6, a.y, dt, 0.4); continue; }
       if (isRun && after > 0.3) { a.seek(a.x + 40, a.y, dt, 0.5); continue; } // stalk blocks downfield
       if (sc.thrown || (sc.sackAt && t > sc.sackAt) || P.down || q.carrying) { if (a.plan && a.plan.i < a.plan.pts.length && !sc.thrown && !P.down) a.follow(dt, 0.9); else a.stop(dt); continue; }

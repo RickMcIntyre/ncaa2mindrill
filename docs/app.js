@@ -50,8 +50,10 @@ function lookSub(st) {
   if (k === 'blitz') return `Linebacker creeping on the ${sideWord}`;
   return LOOKS[k].sub;
 }
-function sampleLook(st) {
+function sampleLook(st, pers = '11') {
   const w = { base: 1, loaded: .35, light: .5, blitz: .35, prevent: .15 };
+  const box = persOf(pers).box; // the defense matches personnel: tight ends bring a loaded box, four wide brings extra DBs
+  if (box > 0) { w.loaded += box; w.light = Math.max(0, w.light - box * .3); } else if (box < 0) { w.light += -box; w.loaded = Math.max(0, w.loaded + box * .5); w.prevent += .1; }
   if (st.dist <= 2) { w.loaded += 1.2; w.light -= .3; }
   if (st.ytg <= 10) { w.loaded += .6; w.prevent = 0; }
   if (st.down >= 3 && st.dist >= 7) { w.blitz += .7; w.prevent += .3; }
@@ -128,16 +130,29 @@ const ROUTES = {
 const ROUTE_GROUPS = ['Short', 'Intermediate', 'Deep', 'Protect'];
 // Field-tap quick cycle: the common handful per position. The chip opens the full tree.
 const ROUTE_CYCLE = { WR: ['out', 'slant', 'curl', 'dig', 'go', 'corner', 'post'], TE: ['out', 'slant', 'dig', 'seam', 'corner', 'block'], RB: ['flat', 'swing', 'angle', 'wheel', 'block'] };
-const DEFAULT_ROUTES = { WR0: 'go', WR1: 'out', WR2: 'slant', TE: 'dig', RB: 'flat' };
+const DEFAULT_ROUTES = { WR0: 'go', WR1: 'out', WR2: 'slant', WR3: 'curl', TE: 'dig', TE2: 'out', TE3: 'block', RB: 'flat', RB2: 'block' };
 // One-tap concepts: set every receiver at once
 const CONCEPTS = {
-  'Four verts': { WR0: 'go', WR1: 'go', WR2: 'seam', TE: 'seam', RB: 'block' },
-  'Mesh':       { WR0: 'drag', WR1: 'corner', WR2: 'drag', TE: 'dig', RB: 'swing' },
-  'Smash':      { WR0: 'hitch', WR1: 'hitch', WR2: 'corner', TE: 'corner', RB: 'flat' },
-  'Flood':      { WR0: 'go', WR1: 'post', WR2: 'out', TE: 'corner', RB: 'flat' },
-  'Spacing':    { WR0: 'curl', WR1: 'curl', WR2: 'hitch', TE: 'hitch', RB: 'flat' },
-  'Max protect':{ WR0: 'post', WR1: 'comeback', WR2: 'dig', TE: 'block', RB: 'block' },
+  'Four verts': { WR0: 'go', WR1: 'go', WR2: 'seam', WR3: 'seam', TE: 'seam', TE2: 'seam', TE3: 'block', RB: 'block', RB2: 'block' },
+  'Mesh':       { WR0: 'drag', WR1: 'corner', WR2: 'drag', WR3: 'corner', TE: 'dig', TE2: 'drag', TE3: 'block', RB: 'swing', RB2: 'flat' },
+  'Smash':      { WR0: 'hitch', WR1: 'hitch', WR2: 'corner', WR3: 'corner', TE: 'corner', TE2: 'hitch', TE3: 'block', RB: 'flat', RB2: 'block' },
+  'Flood':      { WR0: 'go', WR1: 'post', WR2: 'out', WR3: 'corner', TE: 'corner', TE2: 'out', TE3: 'block', RB: 'flat', RB2: 'flat' },
+  'Spacing':    { WR0: 'curl', WR1: 'curl', WR2: 'hitch', WR3: 'hitch', TE: 'hitch', TE2: 'curl', TE3: 'block', RB: 'flat', RB2: 'flat' },
+  'Max protect':{ WR0: 'post', WR1: 'comeback', WR2: 'dig', WR3: 'go', TE: 'block', TE2: 'block', TE3: 'block', RB: 'block', RB2: 'block' },
 };
+// Personnel groupings: first digit backs, second tight ends, the rest receivers. Heavier groups block better and
+// pull the defense in; lighter groups spread it out and find more targets. Subbing lets the defense sub too.
+const PERSONNEL = {
+  '10': { rb: 1, te: 0, wr: 4, label: '10', sub: '1 RB · 0 TE · 4 WR', run: -.03, pass: .015, box: -.35 },
+  '11': { rb: 1, te: 1, wr: 3, label: '11', sub: '1 RB · 1 TE · 3 WR', run: 0, pass: 0, box: 0 },
+  '12': { rb: 1, te: 2, wr: 2, label: '12', sub: '1 RB · 2 TE · 2 WR', run: .015, pass: -.01, box: .5 },
+  '13': { rb: 1, te: 3, wr: 1, label: '13', sub: '1 RB · 3 TE · 1 WR', run: .03, pass: -.025, box: 1.1 },
+  '21': { rb: 2, te: 1, wr: 2, label: '21', sub: '2 RB · 1 TE · 2 WR', run: .02, pass: -.01, box: .5, lead: true },
+  '22': { rb: 2, te: 2, wr: 1, label: '22', sub: '2 RB · 2 TE · 1 WR', run: .035, pass: -.025, box: 1.1, lead: true },
+};
+const persOf = p => PERSONNEL[p] || PERSONNEL['11'];
+// does the roster have the bodies for this grouping?
+function persAvailable(sc, p) { const g = persOf(p), L = sc.lineup.rec; const n = pos => L.filter(r => r.pos === pos).length; return n('WR') >= g.wr && n('TE') >= g.te && n('RB') >= g.rb; }
 function routeOk(st, key) { const r = ROUTES[key]; if (!r.id) return false; return r.id === 'p_deep_side' ? st.ytg > 20 : r.id === 'p_deep_mid' ? st.ytg > 25 : true; }
 function blockers() { return Object.values(G.routes).filter(k => k === 'block').length; }
 // a pass by any name: the pass concepts, the Hail Mary, and the trick plays that end in a throw
@@ -218,7 +233,9 @@ function outcomes(st, id, tgt, mods = {}) {
       r_draw: { blitz: .035, light: .01, loaded: -.03, prevent: .02, base: .005 }, r_power: { light: .01, loaded: -.01, blitz: 0, base: 0, prevent: .01 } }[id];
     let sideAdv = 0;
     if (mods.side && st.lookSide && (look === 'loaded' || look === 'blitz')) sideAdv = (mods.side === st.lookSide ? -.02 : .02) + (c0.counter && mods.side !== st.lookSide ? .01 : 0);
-    const adv = S.orat.or + S.drat.dr + (c0.qb ? (L.qb.adj || 0) * .3 : (L.rb.adj || 0) * .6) + (id === 'r_sneak' ? LK.run * .4 : LK.run) + (CONCEPT ? CONCEPT[look] || 0 : 0) + sideAdv + (mods.trickAdv || 0);
+    const PG = persOf(st.pers); // extra tight ends block; a second back leads through the hole on power, counter and toss
+    const persAdv = (id === 'r_sneak' ? 0 : PG.run) + (PG.lead && (id === 'r_power' || id === 'r_counter' || id === 'r_toss') ? .01 : 0);
+    const adv = S.orat.or + S.drat.dr + (c0.qb ? (L.qb.adj || 0) * .3 : (L.rb.adj || 0) * .6) + (id === 'r_sneak' ? LK.run * .4 : LK.run) + (CONCEPT ? CONCEPT[look] || 0 : 0) + sideAdv + (mods.trickAdv || 0) + persAdv;
     const fum = D.rates.fumble * (c0.toss ? 1.6 : c0.counter ? 1.2 : 1) * (mods.trick && mods.trick.fum ? mods.trick.fum : 1);
     const [k, rows] = id === 'r_sneak' ? pool('r_sneak') : c0.pool === 'r_qb' ? pool('r_qb_' + z) : pool(`${c0.pool}_${z}${sy}`, `${c0.pool}_${z}N`);
     addPool(k, rows, adv, 1 - fum);
@@ -227,14 +244,14 @@ function outcomes(st, id, tgt, mods = {}) {
   }
   if (id.startsWith('p_')) {
     const c = CALLS[id];
-    const rec = tgt ?? (id === 'p_rb' ? L.rec.find(r => r.pos === 'RB') : null);
+    const rec = tgt ?? (id === 'p_rb' ? receivers(S, st.pers).find(r => r.pos === 'RB') : null);
     // play action sells the run: deep throws open up, but the QB holds it longer; a roll-out shortens the sack window and favors the sideline
-    // extra blockers: fewer sacks, but fewer receivers to find
-    const nb = mods.blockers || 0;
+    // extra blockers: fewer sacks, but fewer receivers to find; heavy personnel means fewer routes for the defense to cover
+    const nb = Math.min(3, mods.blockers || 0);
     const lookAdv = c.depth === 'deep' ? LK.deep : LK.short + (id === 'p_rb' && look === 'blitz' ? .05 : 0);
     const tk = mods.trick || {};
-    const adv = S.orat.op + S.drat.dp + (rec ? rec.adj * .6 : 0) + (mods.pa ? (c.depth === 'deep' ? .04 : -.01) : 0) + (mods.roll ? (c.side === 'side' ? .015 : -.02) : 0) - .012 * nb + lookAdv + (mods.trickAdv || 0) + (tk.passer === 'rb' ? -(L.qb.adj || 0) * .6 - .02 : 0);
-    const depthF = (id === 'p_rb' ? .55 : c.depth === 'deep' ? 1.35 : .85) * (mods.pa ? 1.3 : 1) * (mods.roll ? .75 : 1) * (1 - .15 * nb) * LK.sack * (tk.sack || 1);
+    const adv = S.orat.op + S.drat.dp + (rec ? (rec.adj || 0) * .6 : 0) + (mods.pa ? (c.depth === 'deep' ? .04 : -.01) : 0) + (mods.roll ? (c.side === 'side' ? .015 : -.02) : 0) - .012 * nb + lookAdv + (mods.trickAdv || 0) + (tk.passer === 'rb' ? -(L.qb.adj || 0) * .6 - .02 : 0) + persOf(st.pers).pass;
+    const depthF = (id === 'p_rb' ? .55 : c.depth === 'deep' ? 1.35 : .85) * (mods.pa ? 1.3 : 1) * (mods.roll ? .75 : 1) * (1 - .15 * nb) * LK.sack * (tk.sack || 1) * (persOf(st.pers).te >= 2 ? .93 : 1);
     const intF = (id === 'p_rb' ? .45 : c.depth === 'deep' ? 1.9 : c.side === 'mid' ? 1.05 : .75) * (mods.roll ? .9 : 1) * LK.int * (tk.int || 1);
     const pSack = clamp((dg === 'L' ? D.rates.sackL : lgSack) * depthF * Math.sqrt((L.qb.sack || lgSack) / lgSack) * (1 + S.drat.dp), .01, .25);
     const pInt = clamp(lgInt * intF * Math.sqrt((L.qb.int || lgInt) / lgInt) * (1 + 2 * S.drat.dp), .004, .12) * (1 - pSack);
@@ -365,14 +382,14 @@ function expected(st, id, tgt, mods = {}) {
 }
 // All options at a state, each pass concept evaluated with its best target
 function scoreOptions(st) {
-  const L = st.sc.lineup, rows = [];
+  const R = receivers(st.sc, st.pers), rows = [];
   for (const id of Object.keys(CALLS)) {
     if (!available(st, id) || CALLS[id].pick) continue;
     const c = CALLS[id];
     if (c.depth) {
-      for (const rc of L.rec.filter(r => r.pos !== 'RB')) rows.push({ id, tgt: rc, ev: expected(st, id, rc), label: `${c.label} to ${short(rc.name)}` });
+      for (const rc of R.filter(r => r.pos !== 'RB')) rows.push({ id, tgt: rc, ev: expected(st, id, rc), label: `${c.label} to ${short(rc.name)}` });
     } else if (id === 'p_rb') {
-      const rb = L.rec.find(r => r.pos === 'RB'); if (rb) rows.push({ id, tgt: rb, ev: expected(st, id, rb), label: `Screen to ${short(rb.name)}` });
+      const rb = R.find(r => r.pos === 'RB'); if (rb) rows.push({ id, tgt: rb, ev: expected(st, id, rb), label: `Screen to ${short(rb.name)}` });
     } else rows.push({ id, ev: expected(st, id), label: c.label });
   }
   return rows.sort((a, b) => b.ev - a.ev);
@@ -504,7 +521,7 @@ function toast(msg) { const t = document.createElement('div'); t.className = 'to
 const LAUNCH = Date.UTC(2026, 9, 15);
 function todayIndex() { const now = new Date(); const d = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()); return Math.floor((d - LAUNCH) / 864e5); }
 const pick = (list, i) => list[((i % list.length) + list.length) % list.length];
-function dailyScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.std, i) }; }
+function dailyScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.free, i) }; }
 // Saban mode: the drives almost nobody wins. Its daily order is its own, offset so it never shares a game with the regular daily.
 function sabanScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.hard, i * 7 + 3) }; }
 const HARD_WP = 0.10, CIG_WP = 0.25;
@@ -521,6 +538,22 @@ const HARD_MODES = {
   cignetti: { label: 'Cignetti mode', tag: 'CIGNETTI MODE', eyebrow: 'Cignetti mode', btn: 'Google me', cls: 'cignetti', fine: `Cignetti mode drives start between ${Math.round(HARD_WP * 100)}% and ${Math.round(CIG_WP * 100)}% win chance. Hard, not hopeless.`, pitch: sc => `Starting win chance: <b>${pct(sc.wp0)}</b>. Hard, not hopeless. The kind of drive that gets a coach a statue or a buyout.<br>${esc(sc.coach)} ${sc.won ? 'got it done' : "didn't"}. Your turn.` },
 };
 const isHardMode = m => m === 'saban' || m === 'cignetti';
+// Difficulty. Saban is the cliff (100/100): green only for the exact best call, and the simulated room is sharp.
+// Cignetti (80/100) loosens both a notch. Everything free (Daily, Survival, the library) is 60/100: graded on the
+// same curve the real coach gets, against a room that makes human mistakes. Trophies are judged on the cliff regardless.
+const DIFF = {
+  saban:    { green: .005, yellow: .03,  temp: [.006, .034], curve: 'He is graded on a curve. You are not. He has a staff.' },
+  cignetti: { green: .01,  yellow: .045, temp: [.008, .05],  curve: 'He is graded on a curve. Yours is steeper. He has a staff.' },
+  free:     { green: .02,  yellow: .06,  temp: [.012, .09],  curve: 'Same curve for both of you. He had a staff and a headset.' },
+};
+// which curve applies: the hard modes by name, and a hard drive replayed from a library or reached deep in a Survival run
+function diffFor() {
+  if (!G) return DIFF.free;
+  if (isHardMode(G.mode)) return DIFF[G.mode];
+  if (G.sc && isHard(G.sc)) return DIFF.saban;
+  if (G.sc && isCig(G.sc)) return DIFF.cignetti;
+  return DIFF.free;
+}
 // The hard modes are paid. In the app: one in-app purchase (RevenueCat, see native.js). On the web: a Stripe Payment
 // Link; after paying, Stripe sends the player back here with the Checkout session id, the unlock worker verifies it
 // with Stripe and returns a signed unlock code, which the site keeps (and the player can paste on another device).
@@ -614,6 +647,7 @@ function newGame(sc, mode, no) {
     mode, no, sc, log: [], grades: [], snaps: [],
     st: { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0 },
     useTO: false, tempo: 'neutral', picking: null, pickerSlot: null, last: null, busy: false, done: null, routes: { ...DEFAULT_ROUTES }, mods: {}, runSide: 'R', aim: null, twoPt: null,
+    pers: persAvailable(sc, store.pers || '11') ? (store.pers || '11') : '11',
   };
   G.wp0 = wpModel(G.st.s, G.st.T, G.st.ytg, G.st.down, G.st.dist, G.st.to, G.st.dto, G.st.elo);
 }
@@ -676,15 +710,20 @@ function fieldSVG(st, sc, anim) {
   return s;
 }
 
-// Receivers in formation: slot, screen position (dx back from the line, y across the field) and sideline direction
-function receivers(sc) {
-  const L = sc.lineup, out = [];
-  const wr = L.rec.filter(r => r.pos === 'WR'), te = L.rec.find(r => r.pos === 'TE'), rb = L.rec.find(r => r.pos === 'RB');
-  if (wr[0]) out.push({ ...wr[0], slot: 'WR0', dx: 18, y: 60, sideDir: -1 });
-  if (wr[1]) out.push({ ...wr[1], slot: 'WR1', dx: 30, y: 470, sideDir: 1 });
-  if (wr[2]) out.push({ ...wr[2], slot: 'WR2', dx: 30, y: 150, sideDir: -1 });
-  if (te) out.push({ ...te, slot: 'TE', dx: 22, y: 356, sideDir: 1 });
-  if (rb) out.push({ ...rb, slot: 'RB', dx: 72, y: 310, sideDir: 1 });
+// The skill group on the field for a personnel grouping: slot, screen position (dx back from the line, y across the
+// field) and sideline direction. The main back is the team's lead rusher; the second back lines up as a fullback.
+const SLOT_SPOT = { WR0: [18, 60, -1], WR1: [30, 470, 1], WR2: [30, 150, -1], WR3: [30, 390, 1], TE: [22, 356, 1], TE2: [22, 176, -1], TE3: [30, 410, 1], RB: [72, 310, 1], RB2: [62, 222, -1] };
+function receivers(sc, pers) {
+  const p = pers || (G && G.pers) || '11', g = persOf(p), L = sc.lineup, out = [];
+  const wr = L.rec.filter(r => r.pos === 'WR').slice(0, g.wr), te = L.rec.filter(r => r.pos === 'TE').slice(0, g.te);
+  const rbs = L.rec.filter(r => r.pos === 'RB');
+  const lead = rbs.find(r => r.name === L.rb.name) || rbs[0];
+  const rb = (lead ? [lead, ...rbs.filter(r => r !== lead)] : rbs).slice(0, g.rb);
+  // WR3 takes the TE's spot when there is no tight end; TE2 fills the slot when there are two receivers or fewer
+  const wrSlots = g.te === 0 ? ['WR0', 'WR1', 'WR2', 'WR3'] : g.wr === 1 ? ['WR0'] : ['WR0', 'WR1', 'WR2', 'WR3'];
+  wr.forEach((r, i) => { const s = wrSlots[i], [dx, y, sd] = SLOT_SPOT[s]; out.push({ ...r, slot: s, dx, y, sideDir: sd }); });
+  te.forEach((r, i) => { const s = ['TE', 'TE2', 'TE3'][i], [dx, y, sd] = SLOT_SPOT[s]; out.push({ ...r, slot: s, dx, y, sideDir: sd }); });
+  rb.forEach((r, i) => { const s = ['RB', 'RB2'][i], [dx, y, sd] = SLOT_SPOT[s]; out.push({ ...r, slot: s, dx, y, sideDir: sd }); });
   return out;
 }
 function routeFor(r) { return G.routes?.[r.slot] || DEFAULT_ROUTES[r.slot] || 'out'; }
@@ -735,14 +774,17 @@ function lineupHTML(sc) {
   const chip = (num, name, pos) => `<span class="pl"><span class="n" style="background:${off.color};color:${off.alt}">${esc(num || '–')}</span>${esc(short(name))} <span class="ps">${pos}</span></span>`;
   const def = T_(sc.dfn), dl = (sc.dlineup || []).slice(0, 4);
   const dchip = x => `<span class="pl" title="${x.tk} tackles${x.sk ? ', ' + x.sk + ' sacks' : ''}${x.pbu ? ', ' + x.pbu + ' PBU' : ''}${x.int ? ', ' + x.int + ' INT' : ''}"><span class="n" style="background:${def.alt};color:${def.color};border:2px solid ${def.color}">${esc(x.num)}</span>${esc(x.name)} <span class="ps">${x.role}</span></span>`;
-  return `<div class="lineup">${chip(L.qb.num, L.qb.name, 'QB')}${chip(L.rb.num, L.rb.name, 'RB')}${L.rec.filter(r => r.pos !== 'RB').map(r => chip(r.num, r.name, r.pos)).join('')}${dl.length ? `<span class="gl" style="align-self:center">vs</span>${dl.map(dchip).join('')}` : ''}</div>`;
+  const R = receivers(sc); // the group on the field for the chosen personnel
+  return `<div class="lineup">${chip(L.qb.num, L.qb.name, 'QB')}${R.filter(r => r.pos === 'RB').map(r => chip(r.num, r.name, r.slot === 'RB2' ? 'FB' : 'RB')).join('')}${R.filter(r => r.pos !== 'RB').map(r => chip(r.num, r.name, r.pos)).join('')}${dl.length ? `<span class="gl" style="align-self:center">vs</span>${dl.map(dchip).join('')}` : ''}</div>`;
 }
 
 // ---------- screens ----------
 let tab = 'daily';
+let survView = 'run';
 function setTab(t) {
+  if (t === 'practice') { survView = 'library'; t = 'survival'; } // the drive library lives under Survival
   tab = t;
-  for (const [id, k] of [['tabDaily', 'daily'], ['tabSaban', 'saban'], ['tabCignetti', 'cignetti'], ['tabPractice', 'practice'], ['tabCoaches', 'coaches']]) $('#' + id).setAttribute('aria-pressed', String(k === t));
+  for (const [id, k] of [['tabDaily', 'daily'], ['tabSaban', 'saban'], ['tabCignetti', 'cignetti'], ['tabSurvival', 'survival'], ['tabCoaches', 'coaches']]) $('#' + id).setAttribute('aria-pressed', String(k === t));
   document.documentElement.classList.toggle('saban', t === 'saban');
   document.documentElement.classList.toggle('cignetti', t === 'cignetti');
   const sn = $('#subnav');
@@ -752,11 +794,15 @@ function setTab(t) {
       sn.hidden = false;
       sn.innerHTML = `<button data-view="today" aria-pressed="${v === 'today'}">Today's drive</button><button data-view="library" aria-pressed="${v === 'library'}">Library</button>`;
       sn.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { hardView[t] = b.dataset.view; setTab(t); });
+    } else if (t === 'survival') {
+      sn.hidden = false;
+      sn.innerHTML = `<button data-view="run" aria-pressed="${survView === 'run'}">Run</button><button data-view="library" aria-pressed="${survView === 'library'}">Drive library</button>`;
+      sn.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { survView = b.dataset.view; setTab('survival'); });
     } else sn.hidden = true;
   }
   if (t === 'daily') showDaily('daily');
   else if (t === 'saban' || t === 'cignetti') { if ((hardView[t] || 'today') === 'library' && premiumUnlocked()) renderLibrary(t); else showDaily(t); }
-  else if (t === 'practice') showPractice();
+  else if (t === 'survival') { if (survView === 'library') showPractice(); else showSurvival(); }
   else showCoaches();
   window.scrollTo(0, 0);
 }
@@ -775,12 +821,15 @@ function showIntro(sc, mode, no) {
   if (mode === 'practice' && !premiumUnlocked() && (isHard(sc) || isCig(sc))) { renderPaywall(isHard(sc) ? 'saban' : 'cignetti'); return; }
   const off = T_(sc.off), def = T_(sc.dfn), gl = gameLabel(sc);
   const st = { s: sc.os - sc.ds };
-  if (mode === 'practice') $('#subline').textContent = `Practice · ${gl.when}`;
+  if (mode === 'practice') $('#subline').textContent = `Drive library · ${gl.when}`;
+  if (mode === 'survival') $('#subline').textContent = `Survival · round ${no}`;
   const hard = isHard(sc), hm = isHardMode(mode) ? HARD_MODES[mode] : null, saban = !!hm;
-  const eyebrow = hm ? hm.eyebrow : mode === 'daily' ? "Today's drive" : hard ? 'Practice · Saban-hard drive' : isCig(sc) ? 'Practice · Cignetti-hard drive' : 'Practice drive';
+  const eyebrow = hm ? hm.eyebrow : mode === 'daily' ? "Today's drive" : mode === 'survival' ? `Survival · round ${no}${hard ? ' · Saban drive' : isCig(sc) ? ' · Cignetti drive' : ''}` : hard ? 'Library · Saban-hard drive' : isCig(sc) ? 'Library · Cignetti-hard drive' : 'Library drive';
   const twoScore = sc.os - sc.ds <= -9;
   const pitch = hm
     ? `Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}, calling it for <b>${esc(off.school)}</b>. ${hm.pitch(sc, twoScore)}`
+    : mode === 'survival'
+    ? `Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}, calling it for <b>${esc(off.school)}</b> against ${esc(sc.coach === sc.dcoach ? 'them' : sc.dcoach)}.<br><b>Win to stay alive. Lose and the run is over. Tied at the end: overtime.</b>`
     : `Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}. You're calling it for <b>${esc(off.school)}</b>.<br>Can you do better than <b>${esc(sc.coach)}</b> did?`;
   app.innerHTML = `<section class="intro">
     <div class="eyebrow">${eyebrow} · ${esc(gl.when)}</div>
@@ -788,7 +837,7 @@ function showIntro(sc, mode, no) {
     <h2 class="headline">${headline(sc)}<small>${clock(sc.secs)} left in the game</small></h2>
     ${bug({ ...st, os: sc.os, ds: sc.ds, T: sc.secs, to: sc.to, dto: sc.dto }, sc)}
     <div class="pitch">${pitch}</div>
-    <button class="cta" id="go">${hm ? hm.btn : 'Take the field'}</button>
+    <button class="cta" id="go">${hm ? hm.btn : mode === 'survival' ? `Round ${no}` : 'Take the field'}</button>
     <div class="fine">Real score, clock, ball, timeouts and skill players from that game. ${esc(def.school)} coached by ${esc(sc.dcoach)}.${hm ? ' ' + hm.fine : ''}</div>
     ${hm ? unlockCodeNote() : ''}
   </section>`;
@@ -804,7 +853,7 @@ function runoff(pending, tempo) {
 }
 function renderPlay() {
   const st = G.st, sc = G.sc;
-  if (!st.look && !G.done) { st.look = sampleLook(st); st.lookSide = rand() < 0.5 ? 'L' : 'R'; } // the defense shows its look once per snap
+  if (!st.look && !G.done) { st.look = sampleLook(st, G.pers); st.lookSide = rand() < 0.5 ? 'L' : 'R'; } // the defense shows its look once per snap (and again if you sub)
   const sitBits = [`<b>${downText(st)}</b>`, `ball on the ${esc(spot(st.ytg, sc))}`];
   if (st.pending > 0) sitBits.push(`<b style="color:var(--amber)">clock running</b>`); else sitBits.push('clock stopped');
   app.innerHTML = `<div class="game">
@@ -929,6 +978,7 @@ function renderSide() {
       <div class="mods"><span class="gl">Tempo</span>${tempoBtn('hustle', 'Hustle', 'Sprint to the line, snap it fast')}${tempoBtn('neutral', 'Neutral', 'Normal pace')}${tempoBtn('milk', 'Milk it', 'Let the play clock run down')}</div></div>`;
   }
   if (st.twoPt) h += `<div class="note"><b>Two-point try.</b> One snap from the 3, untimed. Run it, throw it, or get cute. It is graded like every other call.</div>`;
+  h += `<div class="mods pers"><span class="gl" title="First digit backs, second tight ends, the rest receivers">Personnel</span>${Object.keys(PERSONNEL).map(k => `<button class="mod" data-pers="${k}" aria-pressed="${G.pers === k}" title="${esc(persOf(k).sub)}${persAvailable(sc, k) ? '' : ' · not enough bodies on this roster'}" ${persAvailable(sc, k) ? '' : 'disabled'}>${k}</button>`).join('')}<span class="note">${esc(persOf(G.pers).sub)}. Sub, and the defense subs too.</span></div>`;
   const groups = {};
   for (const [id, c] of Object.entries(CALLS)) if (c.grp) (groups[c.grp] ||= []).push(id);
   for (const [g, ids] of Object.entries(groups)) {
@@ -947,6 +997,10 @@ function renderSide() {
   side.innerHTML = h;
   const tb = $('#toBtn'); if (tb) tb.onclick = () => { G.useTO = !G.useTO; renderSide(); };
   side.querySelectorAll('[data-tempo]').forEach(b => b.onclick = () => { G.tempo = b.dataset.tempo; renderSide(); });
+  side.querySelectorAll('[data-pers]').forEach(b => b.onclick = () => { // you sub, they sub: the look is drawn again for the new grouping
+    const k = b.dataset.pers; if (k === G.pers || !persAvailable(sc, k)) return;
+    G.pers = k; store.pers = k; saveStore(); G.st.look = null; G.pickerSlot = null; renderPlay();
+  });
   side.querySelectorAll('[data-call]').forEach(b => b.onclick = () => {
     const id = b.dataset.call;
     if (CALLS[id].pick) { G.picking = id; renderPlay(); return; }
@@ -1044,7 +1098,7 @@ function narrate(id, o, r, tgt, sc, mods = {}) {
 function runPlay(id, tgt, mods = {}) {
   if (G.busy) return;
   const sc = G.sc;
-  let st = { ...G.st };
+  let st = { ...G.st, pers: G.pers };
   if (st.twoPt) return runTwoPoint(id, tgt, mods);
   if (CALLS[id].trick && !tgt) tgt = trickTarget(sc, CALLS[id]);
   // clock between snaps: timeout, or the tempo you chose (hustle to the line, neutral, milk it)
@@ -1085,14 +1139,14 @@ function runPlay(id, tgt, mods = {}) {
   const bestWord = ['✓ The best call on the board.', '✓ The best call. The model and you agree, which it will not admit.', '✓ Best call available. Frame it, it may not happen again.'];
   const nearWord = ['Close, not correct.', 'Not the call. Near it.', 'Almost. A coach gets fired for almost.'];
   const costWord = ['Wrong.', 'Wrong. The model winced.', 'Wrong. That one goes in the film session, with the lights on.'];
-  const pts = Math.max(1, Math.round(gap * 100));
-  const grade = gap <= 0.005 ? { cls: '', text: bestWord[rand() < 0.75 ? 0 : 1 + Math.floor(rand() * 2)], e: '🟩' }
-    : gap <= 0.03 ? { cls: 'mid', text: `${nearWord[Math.floor(rand() * nearWord.length)]} ${esc(opts[0].label)} was worth ${pts} more point${pts > 1 ? 's' : ''} of win chance.`, e: '🟨' }
+  const pts = Math.max(1, Math.round(gap * 100)), DF = diffFor();
+  const grade = gap <= DF.green ? { cls: '', text: bestWord[rand() < 0.75 ? 0 : 1 + Math.floor(rand() * 2)], e: '🟩' }
+    : gap <= DF.yellow ? { cls: 'mid', text: `${nearWord[Math.floor(rand() * nearWord.length)]} ${esc(opts[0].label)} was worth ${pts} more point${pts > 1 ? 's' : ''} of win chance.`, e: '🟨' }
     : { cls: 'low', text: `${costWord[rand() < 0.6 ? 0 : 1 + Math.floor(rand() * 2)]} ${esc(opts[0].label)} was worth ${pts} more points of win chance.`, e: '🟥' };
   G.grades.push(grade.e);
   const coachCall = G.st.snaps === 0 ? coachOpening(sc) : null;
   const callLabel = mods.route ? `${ROUTES[mods.route].label} to ${short(tgt.name)}` : tgt ? `${CALLS[id].label} to ${short(tgt.name)}` : CALLS[id].run && mods.side && !['r_sneak', 'r_in', 'r_draw'].includes(id) ? `${CALLS[id].label} ${mods.side === 'L' ? 'left' : 'right'}` : CALLS[id].label;
-  G.snaps.push({ sit: `${downText(st)} · ${spot(st.ytg, sc)} · ${clock(st.T)}`, call: callLabel + (mods.pa ? ' (play action)' : mods.roll ? ' (roll out)' : ''), text, wpBefore, wpAfter: r.end ? endValue(n, r.end) : contValue(n), e: grade.e, best: opts[0]?.label, kind: isPassId(id) ? 'pass' : (id.startsWith('r_') || CALLS[id].trick) ? 'run' : id, down: st.down, dist: st.dist, deep: CALLS[id].depth === 'deep' || id === 'hail' || (CALLS[id].trick && CALLS[id].base.startsWith('p_deep') && st.ytg > 20), short: mods.route ? ROUTES[mods.route].label : CALLS[id].label, trick: !!CALLS[id].trick });
+  G.snaps.push({ sit: `${downText(st)} · ${spot(st.ytg, sc)} · ${clock(st.T)}`, call: callLabel + (mods.pa ? ' (play action)' : mods.roll ? ' (roll out)' : ''), text, wpBefore, wpAfter: r.end ? endValue(n, r.end) : contValue(n), e: grade.e, gap, best: opts[0]?.label, kind: isPassId(id) ? 'pass' : (id.startsWith('r_') || CALLS[id].trick) ? 'run' : id, down: st.down, dist: st.dist, deep: CALLS[id].depth === 'deep' || id === 'hail' || (CALLS[id].trick && CALLS[id].base.startsWith('p_deep') && st.ytg > 20), short: mods.route ? ROUTES[mods.route].label : CALLS[id].label, trick: !!CALLS[id].trick });
   const wpAfter = r.end ? endValue(n, r.end) : contValue(n);
   const { badge, title } = badgeTitle(o, r, n);
   const g = o.src ? D.games[o.src[3]] : null;
@@ -1190,7 +1244,7 @@ function startTwoPoint(n) {
   renderPlay();
 }
 function runTwoPoint(id, tgt, mods = {}) {
-  const sc = G.sc, st = { ...G.st }, base = G.twoPt.n;
+  const sc = G.sc, st = { ...G.st, pers: G.pers }, base = G.twoPt.n;
   if (CALLS[id].trick && !tgt) tgt = trickTarget(sc, CALLS[id]);
   const a2 = afterScore(base, base.s + 2).best, a0 = afterScore(base, base.s).best;
   const opts = twoOptions(st).map(o => ({ ...o, ev: o.p * a2 + (1 - o.p) * a0 }));
@@ -1209,14 +1263,14 @@ function runTwoPoint(id, tgt, mods = {}) {
   mods.who = who;
   const text = (narrate(id, o, r, tgt, sc, mods) + whoText(who, o, r)).replace(/ Touchdown!/g, ' Two points!');
   G.log.push({ sit: '2PT', text: (ok ? 'Two-point try is good. ' : 'Two-point try fails. ') + text });
-  const gap = opts[0].ev - mine.ev, pts = Math.max(1, Math.round(gap * 100));
-  const grade = gap <= 0.005 ? { cls: '', text: '✓ The best call on the board.', e: '🟩' }
-    : gap <= 0.03 ? { cls: 'mid', text: `Close, not correct. ${esc(opts[0].label)} was worth ${pts} more point${pts > 1 ? 's' : ''} of win chance.`, e: '🟨' }
+  const gap = opts[0].ev - mine.ev, pts = Math.max(1, Math.round(gap * 100)), DF = diffFor();
+  const grade = gap <= DF.green ? { cls: '', text: '✓ The best call on the board.', e: '🟩' }
+    : gap <= DF.yellow ? { cls: 'mid', text: `Close, not correct. ${esc(opts[0].label)} was worth ${pts} more point${pts > 1 ? 's' : ''} of win chance.`, e: '🟨' }
     : { cls: 'low', text: `Wrong. ${esc(opts[0].label)} was worth ${pts} more points of win chance.`, e: '🟥' };
   G.grades.push(grade.e);
   const callLabel = tgt ? `${CALLS[id].label} to ${short(tgt.name)}` : CALLS[id].label;
   const wpBefore = TWO * a2 + (1 - TWO) * a0, wpAfter = ok ? a2 : a0;
-  G.snaps.push({ sit: 'Two-point try · from the 3', call: callLabel, text, wpBefore, wpAfter, e: grade.e, best: opts[0].label, kind: isPassId(id) ? 'pass' : 'run', down: 1, dist: 3, deep: false, short: CALLS[id].label, trick: !!CALLS[id].trick, twoPt: true });
+  G.snaps.push({ sit: 'Two-point try · from the 3', call: callLabel, text, wpBefore, wpAfter, e: grade.e, gap, best: opts[0].label, kind: isPassId(id) ? 'pass' : 'run', down: 1, dist: 3, deep: false, short: CALLS[id].label, trick: !!CALLS[id].trick, twoPt: true });
   const g = o.src ? D.games[o.src[3]] : null;
   const quip = maybeQuip(o, r, id, mods, st);
   const r2 = { ...r, td: ok, first: false };
@@ -1279,6 +1333,13 @@ function conclude(end, n, msg) {
   else { wp = oppBall(n, n.s, n.T, end.oppYtg); desc = `${end.why}. ${T_(G.sc.dfn).school} takes over with ${clock(n.T)} left.`; }
   const scored = n.os - G.sc.os;
   G.done = { wp, desc, os: n.os, ds: n.ds, T: n.T, scored, snaps: n.snaps };
+  if (G.mode === 'survival') { // the rest of the game plays out at the model's odds: win to stay alive
+    const S = survState(), cur = S.cur || (S.cur = { streak: 0, drives: [], over: false });
+    const won = wp >= 0.999 ? true : wp <= 0.001 ? false : rand() < wp;
+    cur.drives.push({ sid: G.sc.id, wp, cwp: G.sc.cwp, won, round: G.no }); cur.next = null;
+    if (won) { cur.streak += 1; S.best = Math.max(S.best || 0, cur.streak); } else { cur.over = true; S.runs = (S.runs || 0) + 1; }
+    G.done.surv = { won, round: G.no, streak: cur.streak, best: S.best };
+  }
   G.done.trophy = judgeTrophy();
   if (G.done.trophy) { (store.trophies ||= { saban: [], cignetti: [] })[G.done.trophy].push({ no: G.no, mode: G.mode, date: new Date().toISOString().slice(0, 10), game: gameLabel(G.sc).title }); }
   if (G.mode === 'daily' || isHardMode(G.mode)) { (store[G.mode] ||= {})[G.no] = { done: G.done, grades: G.grades, log: G.log, snaps: G.snaps, coachWp: G.sc.cwp, sid: G.sc.id }; }
@@ -1310,12 +1371,13 @@ function showLeaderboard(r) {
 function simulateCallers(sc, N, onProgress, onDone) {
   const results = []; let i = 0;
   const one = () => {
-    const temp = 0.006 + rand() * 0.03, lean = (rand() - 0.5) * 0.04, toProb = 0.4 + rand() * 0.6; // sharp callers; the room is not kind
-    let st = { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0, look: null };
+    const [t0, t1] = diffFor().temp; // how sharp the room is: Saban's room barely misses, the free room makes human mistakes
+    const temp = t0 + rand() * (t1 - t0), lean = (rand() - 0.5) * 0.04, toProb = 0.4 + rand() * 0.6;
+    let st = { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0, look: null, pers: '11' };
     for (let guard = 0; guard < 40; guard++) {
       if (st.pending > 0) { if (st.to > 0 && st.T < 75 && rand() < toProb) st.to -= 1; else st.T = Math.max(0, st.T - st.pending); st.pending = 0; }
       if (st.T <= 0) return wpModel(st.s, 0, 50, 1, 10, 0, 0, st.elo);
-      st.look = sampleLook(st);
+      st.look = sampleLook(st, '11');
       const opts = scoreOptions(st);
       if (!opts.length) return contValue(st);
       const w = opts.map(o => Math.exp((o.ev + (o.id.startsWith('r_') ? lean : o.id.startsWith('p_') ? -lean : 0)) / temp));
@@ -1381,7 +1443,7 @@ const CALL_WORD = { p_short_side: 'Short pass, sideline', p_short_mid: 'Short pa
 function gradeCoachCall(sc, p, to, dto) {
   const id = p.c === 'pass' ? null : p.c === 'run' ? null : CALLS[p.c] ? p.c : null;
   if (!id || !CALLS[id] || id === 'timeout' || id === 'penalty' || id === 'other') return null;
-  const st = { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: p.s, ytg: p.y, down: p.d, dist: p.dist, to, dto, elo: sc.elo, pending: 0, snaps: 0, look: 'base' };
+  const st = { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: p.s, ytg: p.y, down: p.d, dist: p.dist, to, dto, elo: sc.elo, pending: 0, snaps: 0, look: 'base', pers: '11' };
   if (!available(st, id)) return null;
   let opts; try { opts = scoreOptions(st); } catch { return null; }
   if (!opts.length) return null;
@@ -1405,8 +1467,10 @@ function coachSnaps(sc) {
 // Trophies. A Saban is a perfect game: every snap the best call, at least five snaps, and you beat the coach.
 // A Cignetti is every snap green or yellow with at least 60% best calls, and you beat the coach. Rare on purpose.
 function judgeTrophy() {
-  if (!G.done || !G.snaps.length || G.mode === 'practice') return null;
-  const n = G.snaps.length, greens = G.snaps.filter(s => s.e === '🟩').length, reds = G.snaps.filter(s => s.e === '🟥').length;
+  if (!G.done || !G.snaps.length || G.mode === 'practice' || G.mode === 'survival') return null;
+  // judged on the cliff whatever curve the screen used: the exact best call is green, 3 points off is red
+  const cliff = DIFF.saban, gapOf = s => s.gap != null ? s.gap : (s.e === '🟩' ? 0 : s.e === '🟨' ? .02 : .05);
+  const n = G.snaps.length, greens = G.snaps.filter(s => gapOf(s) <= cliff.green).length, reds = G.snaps.filter(s => gapOf(s) > cliff.yellow).length;
   const beat = G.done.wp >= G.sc.cwp;
   if (n >= 5 && greens === n && beat) return 'saban';
   if (n >= 4 && reds === 0 && greens / n >= 0.6 && beat) return 'cignetti';
@@ -1424,7 +1488,7 @@ function comparison(sc) {
   const cGraded = theirPlays.filter(s => s.e), cBest = cGraded.filter(s => s.e === '🟩').length;
   const summary = `<div><b>You</b>: ${count(mine, 'pass')} pass${count(mine, 'pass') === 1 ? '' : 'es'}, ${count(mine, 'run')} run${count(mine, 'run') === 1 ? '' : 's'}${count(mine, 'spike') ? `, ${count(mine, 'spike')} spike` : ''}${count(mine, 'fg') ? ', a field goal try' : ''} · ${G.done.snaps} snaps · ended with ${clock(G.done.T)} left</div>
     <div><b>${esc(sc.coach)}</b>: ${count(theirPlays, 'pass')} pass${count(theirPlays, 'pass') === 1 ? '' : 'es'}, ${count(theirPlays, 'run')} run${count(theirPlays, 'run') === 1 ? '' : 's'}${count(theirs, 'timeout') ? `, ${count(theirs, 'timeout')} timeout${count(theirs, 'timeout') > 1 ? 's' : ''}` : ''}${count(theirPlays, 'fg') ? ', a field goal try' : ''} · ${theirPlays.length} snaps · ${esc(resultWord(sc).toLowerCase())}</div>
-    <div class="scoreline"><b>Best call on the board:</b> you ${myBest} of ${myGraded}${cGraded.length ? ` · ${esc(sc.coach)} ${cBest} of ${cGraded.length}` : ''}. <span class="muted">He is graded on a curve. You are not. He has a staff.</span></div>`;
+    <div class="scoreline"><b>Best call on the board:</b> you ${myBest} of ${myGraded}${cGraded.length ? ` · ${esc(sc.coach)} ${cBest} of ${cGraded.length}` : ''}. <span class="muted">${esc(diffFor().curve)}</span></div>`;
   const n = Math.max(mine.length, theirs.length);
   let rows = '';
   for (let i = 0; i < n; i++) {
@@ -1440,7 +1504,8 @@ function comparison(sc) {
 function shareText() {
   const sc = G.sc, d = G.done, gl = gameLabel(sc), saban = isHardMode(G.mode);
   const verdict = d.wp - sc.cwp > 0.02 ? `I beat ${sc.coach}` : Math.abs(d.wp - sc.cwp) <= 0.02 ? `Dead even with ${sc.coach}` : `${sc.coach} got me`;
-  return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}${d.trophy ? ` · ${TROPHY[d.trophy].stamp}` : ''}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}\n${G.grades.join('')}\nncaa2mindrill.com`;
+  const surv = G.mode === 'survival' && d.surv ? `\nSurvival · ${d.surv.won ? `survived round ${d.surv.round}` : `run over after ${d.surv.streak}`}` : '';
+  return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}${d.trophy ? ` · ${TROPHY[d.trophy].stamp}` : ''}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no && G.mode !== 'survival' ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}${surv}\n${G.grades.join('')}\nncaa2mindrill.com`;
 }
 // 1200x630 share card (the size X, Facebook and iMessage previews use)
 function drawShareCard(cv) {
@@ -1509,6 +1574,7 @@ function renderFinal() {
     <div class="eyebrow" style="text-align:center">${esc(gl.when)} · ${esc(gl.title)}</div>
     <div class="finalscore"><div class="fs"><span class="chip" style="background:${off.color}"></span><b>${esc(off.abbr)}</b><em>${d.os}</em></div><div class="fsmid"><div class="gl">After your drive</div><div class="note">${clock(d.T)} left</div></div><div class="fs r"><em>${d.ds}</em><b>${esc(def.abbr)}</b><span class="chip" style="background:${def.color}"></span></div></div>
     <h2 class="verdict">${esc(verdict)}</h2>
+    ${survivalHTML()}
     ${d.trophy ? `<div class="trophy ${d.trophy}"><div class="who">Awarded</div><div class="big">${esc(TROPHY[d.trophy].label)}</div><div class="end">${esc(TROPHY[d.trophy].line)}</div></div>` : ''}
     ${giftHTML()}
     ${sabanLine}
@@ -1532,6 +1598,7 @@ function renderFinal() {
       </div>
       ${G.mode === 'practice' ? '<div class="row"><button class="cta ghost" id="again">Replay this drive</button></div>' : ''}
     </div>
+    ${G.mode === 'survival' && d.surv ? `<div class="row">${d.surv.won ? '<button class="cta" id="survNext">Next drive · round ' + (d.surv.round + 1) + '</button>' : '<button class="cta" id="survNew">Start a new run</button>'}</div>` : ''}
     <div class="realdrive cmp">
       <div class="h">Snap by snap: you vs ${esc(sc.coach)}</div>
       <div class="cmpsum">${cmp.summary}</div>
@@ -1576,7 +1643,59 @@ function renderFinal() {
   };
   const dl = $('#shareDl'); dl.onclick = () => { dl.href = $('#shareCanvas').toDataURL('image/png'); };
   const ag = $('#again'); if (ag) ag.onclick = () => { newGame(sc, G.mode, G.no); renderPlay(); };
-  $('#more').onclick = () => { if (G.mode === 'saban' || isHard(sc)) pf = { q: '', year: '', kind: 'saban' }; else if (G.mode === 'cignetti' || isCig(sc)) pf = { q: '', year: '', kind: 'cignetti' }; setTab('practice'); };
+  const sn = $('#survNext'); if (sn) sn.onclick = survNext;
+  const sw = $('#survNew'); if (sw) sw.onclick = survNext;
+  $('#more').onclick = () => { if (G.mode === 'survival') { survView = 'run'; setTab('survival'); return; } if (G.mode === 'saban' || isHard(sc)) pf = { q: '', year: '', kind: 'saban' }; else if (G.mode === 'cignetti' || isCig(sc)) pf = { q: '', year: '', kind: 'cignetti' }; setTab('practice'); };
+}
+
+// ---------- survival: win to stay alive ----------
+// Round by round the pool gets harder: regular drives, then the Cignetti shelf (rounds 7-9), then the Saban pool.
+function survState() { return store.survival ||= { best: 0, runs: 0, cur: null }; }
+const SURV_BAND = r => r <= 2 ? [0.45, 1.01] : r <= 4 ? [0.35, 0.50] : r <= 6 ? [0.28, 0.40] : r <= 9 ? [HARD_WP, CIG_WP] : [0, HARD_WP];
+function survPool(round, used) {
+  const [lo, hi] = SURV_BAND(round);
+  let pool = round >= 10 ? D.hard : round >= 7 ? D.cig : D.scen.filter(s => !isHopeless(s) && !isHard(s) && !isCig(s) && s.wp0 > lo && s.wp0 <= hi);
+  const fresh = pool.filter(s => !used.includes(s.id));
+  if (fresh.length) return fresh;
+  return pool.length ? pool : D.std.filter(s => !isHopeless(s) && !isHard(s) && !isCig(s));
+}
+function survNext() {
+  const S = survState();
+  if (!S.cur || S.cur.over) S.cur = { streak: 0, drives: [], over: false, started: Date.now() };
+  const round = S.cur.streak + 1;
+  if (round >= 7 && !premiumUnlocked()) { renderSurvPaywall(round); return; }
+  let sc = S.cur.next != null ? D.scen[S.cur.next] : null; // the next drive is drawn once, so a reload doesn't reroll it
+  if (!sc || S.cur.drives.some(d => d.sid === sc.id)) { const pool = survPool(round, S.cur.drives.map(d => d.sid)); sc = pool[Math.floor(rand() * pool.length)]; S.cur.next = sc.id; }
+  saveStore();
+  showIntro(sc, 'survival', round);
+}
+function showSurvival() {
+  const S = survState(), cur = S.cur, alive = !!(cur && !cur.over);
+  $('#subline').textContent = `Survival · best run ${S.best || 0}`;
+  const done = cur && cur.drives.length ? cur.drives.map(d => `<span class="sd ${d.won ? 'w' : 'l'}" title="Round ${d.round}: ${pct(d.wp)} win chance">${d.won ? '✓' : '✗'}</span>`).join('') : '';
+  app.innerHTML = `<section class="intro">
+    <div class="eyebrow">Survival${alive && cur.streak ? ` · ${cur.streak} in a row` : ''}</div>
+    <h2 class="headline">${alive && cur.streak ? `${cur.streak}<small>drive${cur.streak === 1 ? '' : 's'} survived · round ${cur.streak + 1} is next</small>` : `Win to<small>stay alive</small>`}</h2>
+    <div class="pitch">A random real drive, then another, each one harder. Win the game to stay alive. Lose once and the run is over.<br>Rounds 1–6 are regular drives (45%+ to start, then 35–50%, then 28–40%). Rounds 7–9 come off the Cignetti shelf, 10 and up out of the Saban pool.${premiumUnlocked() ? '' : ' The deep end takes the unlock.'}</div>
+    ${done ? `<div class="survrow" aria-label="This run">${done}</div>` : ''}
+    <button class="cta" id="survGo">${alive && cur.streak ? `Round ${cur.streak + 1}` : 'Start a run'}</button>
+    ${alive && cur.streak ? `<button class="cta ghost" id="survQuit">Walk away with ${cur.streak}</button>` : ''}
+    <div class="fine">Best run: ${S.best || 0} · Runs finished: ${S.runs || 0}. The rest of each game plays out at the model's odds, so a 70% finish survives 7 times in 10. Saved in this browser.</div>
+  </section>`;
+  $('#survGo').onclick = survNext;
+  const q = $('#survQuit'); if (q) q.onclick = () => { S.runs = (S.runs || 0) + 1; S.cur.over = true; saveStore(); showSurvival(); };
+}
+function renderSurvPaywall(round) {
+  renderPaywall('cignetti');
+  const e = $('.paywall .eyebrow'); if (e) e.textContent = `Survival · round ${round} · the deep end is locked`;
+  const p = $('.paywall .pitch'); if (p) p.insertAdjacentHTML('afterbegin', `You survived ${round - 1}. Rounds 7 and up are Cignetti and Saban drives, which come with the unlock. Your run is saved here until you come back.<br><br>`);
+}
+function survivalHTML() {
+  const d = G.done, s = d && d.surv; if (!s) return '';
+  const line = s.won
+    ? (d.wp >= 0.999 ? 'Final. You won it on the field.' : `The rest of the game played out and your ${pct(d.wp)} held up.`) + ` ${s.streak} in a row.${s.streak >= 7 ? ' This is the deep end now.' : ''}`
+    : (d.wp <= 0.001 ? 'Final. You lost it on the field.' : `The rest of the game played out and your ${pct(d.wp)} did not hold up.`) + ` ${s.streak} drive${s.streak === 1 ? '' : 's'} survived${s.streak > 0 && s.streak >= s.best ? ', which ties or sets your best' : ''}.`;
+  return `<div class="trophy surv ${s.won ? 'alive' : 'dead'}"><div class="who">Survival · round ${s.round}</div><div class="big">${s.won ? 'SURVIVED' : 'RUN OVER'}</div><div class="end">${esc(line)}</div></div>`;
 }
 
 // ---------- hard-mode libraries (replayable; the daily stays under "Today's drive") ----------
@@ -1691,7 +1810,9 @@ function showStats() {
   const sabWon = sab.filter(v => v.done.wp >= 0.5).length, cigWon = cig.filter(v => v.done.wp >= 0.5).length;
   $('#statsBody').innerHTML = `<div><b>${days.length}</b><span>Played</span></div><div><b>${beat}</b><span>Beat the coach</span></div><div><b>${streak}</b><span>Day streak</span></div><div><b>${days.length ? (avg >= 0 ? '+' : '') + Math.round(avg * 100) : '–'}</b><span>Avg vs coach</span></div>` +
     `<div><b>${sab.length}</b><span>Saban drives</span></div><div><b>${sabWon}</b><span>Saban wins (50%+)</span></div><div><b>${cig.length}</b><span>Cignetti drives</span></div><div><b>${cigWon}</b><span>Cignetti wins (50%+)</span></div>` +
-    `<div><b>${(store.trophies && store.trophies.saban || []).length}</b><span>Sabans earned</span></div><div><b>${(store.trophies && store.trophies.cignetti || []).length}</b><span>Cignettis earned</span></div><div style="grid-column:span 2" class="note">A Saban is a perfect game: every call the best one, and you beat the coach. A Cignetti: no wrong calls, mostly right ones. Both rare on purpose.</div>`;
+    `<div><b>${(store.trophies && store.trophies.saban || []).length}</b><span>Sabans earned</span></div><div><b>${(store.trophies && store.trophies.cignetti || []).length}</b><span>Cignettis earned</span></div>` +
+    `<div><b>${survState().best || 0}</b><span>Survival best run</span></div><div><b>${survState().runs || 0}</b><span>Survival runs</span></div>` +
+    `<div style="grid-column:span 2" class="note">A Saban is a perfect game: every call the best one, and you beat the coach. A Cignetti: no wrong calls, mostly right ones. Both rare on purpose.</div>`;
   $('#statsNote').textContent = days.length ? 'Saved in this browser only.' : 'Finish today\'s drive to start your record. Saved in this browser only.';
   $('#statsDlg').showModal();
 }
@@ -1700,7 +1821,7 @@ function showStats() {
 $('#tabDaily').onclick = () => setTab('daily');
 $('#tabSaban').onclick = () => setTab('saban');
 $('#tabCignetti').onclick = () => setTab('cignetti');
-$('#tabPractice').onclick = () => setTab('practice');
+$('#tabSurvival').onclick = () => { survView = 'run'; setTab('survival'); };
 $('#tabCoaches').onclick = () => setTab('coaches');
 $('#helpBtn').onclick = () => $('#helpDlg').showModal();
 $('#helpClose').onclick = () => $('#helpDlg').close();
@@ -1716,14 +1837,16 @@ fetch('data.json').then(r => r.json()).then(d => {
   for (const s of D.scen) s.kick = clamp(s.kick || 0, -0.12, 0.12);
   for (const k of ['pen_pre', 'pen_pass', 'pen_run']) if (D.pools[k]) for (const row of D.pools[k]) if (row[1] === 'Missing') row[1] = 'Penalty';
   for (const s of D.scen) s.wp0 = wpModel(s.os - s.ds, s.secs, s.ytg, s.down, s.dist, s.to, s.dto, s.elo);
-  D.std = D.scen.filter(s => s.os - s.ds >= -8);           // the regular daily pool, in its fixed order
+  D.std = D.scen.filter(s => s.os - s.ds >= -8);           // every one-score drive, in its fixed order
+  // the free daily: one score down, 30-75% to win at the start. Winnable with a good drive, lost with a bad one.
+  D.free = D.std.filter(s => s.wp0 >= 0.30 && s.wp0 <= 0.75 && !isHopeless(s));
   D.hard = D.scen.filter(isHard).sort((a, b) => a.id - b.id);
   D.cig = D.scen.filter(isCig).sort((a, b) => a.id - b.id);
   if (window.Native && window.Native.init) window.Native.init().then(() => { if (isHardMode(tab)) setTab(tab); }).catch(() => {});
   let seen = false; try { seen = localStorage.getItem('cfb2md:seen') === '1'; localStorage.setItem('cfb2md:seen', '1'); } catch { seen = true; }
   beacon('/hit', { token: playerToken() });
   const back = location.search.includes('unlock=');
-  const startTab = location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : 'daily';
+  const startTab = location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : location.hash === '#survival' ? 'survival' : 'daily';
   if (back) claimFromUrl().then(() => setTab(startTab)); else setTab(startTab);
   if (!seen && !back) $('#helpDlg').showModal();
 }).catch(() => { app.innerHTML = '<p class="note">Could not load the drive data. Reload the page to try again.</p>'; });
