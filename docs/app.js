@@ -43,6 +43,13 @@ const LOOKS = {
   blitz:   { label: 'Showing blitz', sub: 'Linebackers creeping to the line' },
   prevent: { label: 'Prevent', sub: 'Safeties way back, corners off' },
 };
+// which side the extra defender is on (loaded box: the safety down; blitz: the creeping backer). L = top of the field.
+function lookSub(st) {
+  const k = st.look || 'base', sideWord = st.lookSide === 'L' ? 'left' : 'right';
+  if (k === 'loaded') return `7 or more near the line, safety down on the ${sideWord}`;
+  if (k === 'blitz') return `Linebacker creeping on the ${sideWord}`;
+  return LOOKS[k].sub;
+}
 function sampleLook(st) {
   const w = { base: 1, loaded: .35, light: .5, blitz: .35, prevent: .15 };
   if (st.dist <= 2) { w.loaded += 1.2; w.light -= .3; }
@@ -58,10 +65,16 @@ function sampleLook(st) {
 
 // ---------- calls ----------
 const CALLS = {
-  r_in:   { grp: 'Run', label: 'Inside run', sub: 'RB between the tackles', dur: 5 },
-  r_out:  { grp: 'Run', label: 'Outside run', sub: 'RB to the edge', dur: 6 },
-  r_qb:   { grp: 'Run', label: 'QB keeper', sub: 'Designed QB run', dur: 5 },
-  r_sneak:{ grp: 'Run', label: 'QB sneak', sub: 'Short yardage push', dur: 3 },
+  run:    { grp: 'Run', label: 'Run', sub: 'Pick the concept and the side, or tap the hole on the field', dur: 5, pick: true },
+  // run concepts: pool is the set of real snaps the result is drawn from (inside vs outside); lane is where the back aims
+  r_in:     { label: 'Inside zone', sub: 'One cut, between the tackles', dur: 5, run: true, pool: 'r_in', lane: 'in', say: 'up the middle' },
+  r_power:  { label: 'Power', sub: 'Off tackle behind a pulling guard', dur: 5, run: true, pool: 'r_in', lane: 'tackle', say: 'off tackle' },
+  r_counter:{ label: 'Counter', sub: 'Fake one way, hit the other', dur: 6, run: true, pool: 'r_in', lane: 'tackle', counter: true, say: 'on the counter' },
+  r_out:    { label: 'Outside zone', sub: 'Stretch it to the edge', dur: 6, run: true, pool: 'r_out', lane: 'out', say: 'to the outside' },
+  r_toss:   { label: 'Toss', sub: 'Pitch it and get to the corner', dur: 6, run: true, pool: 'r_out', lane: 'out', toss: true, say: 'on the toss' },
+  r_draw:   { label: 'Draw', sub: 'Pass set, late handoff', dur: 6, run: true, pool: 'r_in', lane: 'in', draw: true, say: 'on the draw' },
+  r_qb:     { label: 'QB keeper', sub: 'Designed quarterback run', dur: 5, run: true, pool: 'r_qb', lane: 'tackle', qb: true, say: 'on a keeper' },
+  r_sneak:  { grp: 'Run', label: 'QB sneak', sub: 'Short-yardage push', dur: 3, run: true, pool: 'r_sneak', lane: 'in', qb: true, say: 'on a sneak' },
   pass:   { grp: 'Pass', label: 'Pass', sub: 'Pick a route for each receiver, then throw', dur: 5, pick: true },
   p_short_side: { label: 'Out', dur: 5, depth: 'short', side: 'side' },
   p_short_mid:  { label: 'Slant', dur: 5, depth: 'short', side: 'mid' },
@@ -117,6 +130,7 @@ function blockers() { return Object.values(G.routes).filter(k => k === 'block').
 function available(st, id) {
   switch (id) {
     case 'r_sneak': return st.dist <= 2;
+    case 'r_draw': return st.down < 4 || st.dist <= 5;
     case 'p_deep_side': return st.ytg > 20;
     case 'p_deep_mid': return st.ytg > 25;
     case 'hail': return st.ytg >= 35 && st.ytg <= 65;
@@ -154,10 +168,17 @@ function outcomes(st, id, tgt, mods = {}) {
   const LK = { base: { run: 0, short: 0, deep: 0, sack: 1, int: 1 }, loaded: { run: -.045, short: .02, deep: .03, sack: .9, int: 1 },
     light: { run: .04, short: -.01, deep: -.01, sack: 1, int: 1 }, blitz: { run: .015, short: .015, deep: .05, sack: 1.5, int: 1.1 },
     prevent: { run: .035, short: .035, deep: -.055, sack: .7, int: .85 } }[look];
-  if (id === 'r_in' || id === 'r_out' || id === 'r_qb' || id === 'r_sneak') {
-    const adv = S.orat.or + S.drat.dr + (id === 'r_qb' || id === 'r_sneak' ? (L.qb.adj || 0) * .3 : (L.rb.adj || 0) * .6) + (id === 'r_sneak' ? LK.run * .4 : LK.run);
-    const fum = D.rates.fumble;
-    const [k, rows] = id === 'r_sneak' ? pool('r_sneak') : id === 'r_qb' ? pool('r_qb_' + z) : pool(`${id}_${z}${sy}`, `${id}_${z}N`);
+  const c0 = CALLS[id];
+  if (c0 && c0.run) {
+    // concept vs look: counters and draws punish aggression, tosses need the edge, and running away from the
+    // safety or the blitz is worth something
+    const CONCEPT = { r_counter: { blitz: .03, loaded: .015, light: -.01, base: 0, prevent: 0 }, r_toss: { loaded: .01, light: -.015, blitz: -.01, base: 0, prevent: .01 },
+      r_draw: { blitz: .035, light: .01, loaded: -.03, prevent: .02, base: .005 }, r_power: { light: .01, loaded: -.01, blitz: 0, base: 0, prevent: .01 } }[id];
+    let sideAdv = 0;
+    if (mods.side && st.lookSide && (look === 'loaded' || look === 'blitz')) sideAdv = (mods.side === st.lookSide ? -.02 : .02) + (c0.counter && mods.side !== st.lookSide ? .01 : 0);
+    const adv = S.orat.or + S.drat.dr + (c0.qb ? (L.qb.adj || 0) * .3 : (L.rb.adj || 0) * .6) + (id === 'r_sneak' ? LK.run * .4 : LK.run) + (CONCEPT ? CONCEPT[look] || 0 : 0) + sideAdv;
+    const fum = D.rates.fumble * (c0.toss ? 1.6 : c0.counter ? 1.2 : 1);
+    const [k, rows] = id === 'r_sneak' ? pool('r_sneak') : c0.pool === 'r_qb' ? pool('r_qb_' + z) : pool(`${c0.pool}_${z}${sy}`, `${c0.pool}_${z}N`);
     addPool(k, rows, adv, 1 - fum);
     out.push({ p: fum, y: 1, f: 8, src: null, fumble: true });
     return out;
@@ -303,7 +324,7 @@ function expected(st, id, tgt, mods = {}) {
 function scoreOptions(st) {
   const L = st.sc.lineup, rows = [];
   for (const id of Object.keys(CALLS)) {
-    if (!available(st, id) || id === 'pass') continue;
+    if (!available(st, id) || id === 'pass' || id === 'run') continue;
     const c = CALLS[id];
     if (c.depth) {
       for (const rc of L.rec.filter(r => r.pos !== 'RB')) rows.push({ id, tgt: rc, ev: expected(st, id, rc), label: `${c.label} to ${short(rc.name)}` });
@@ -425,7 +446,7 @@ function newGame(sc, mode, no) {
   G = {
     mode, no, sc, log: [], grades: [], snaps: [],
     st: { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0 },
-    useTO: false, tempo: 'neutral', picking: null, pickerSlot: null, last: null, busy: false, done: null, routes: { ...DEFAULT_ROUTES }, mods: {},
+    useTO: false, tempo: 'neutral', picking: null, pickerSlot: null, last: null, busy: false, done: null, routes: { ...DEFAULT_ROUTES }, mods: {}, runSide: 'R', aim: null,
   };
   G.wp0 = wpModel(G.st.s, G.st.T, G.st.ytg, G.st.down, G.st.dist, G.st.to, G.st.dto, G.st.elo);
 }
@@ -463,6 +484,11 @@ function fieldSVG(st, sc, anim) {
       for (const r of receivers(sc)) {
         if (picking) s += routePath(r, los, G.routes[r.slot]);
         s += dot(los - r.dx, r.y, r.num, col, alt, 15, picking ? `data-rec="${r.slot}" style="cursor:pointer" role="button" aria-label="Change ${esc(short(r.name))}'s route"` : '');
+      }
+      if (G.picking === 'run' && G.aim) { // the hole he's aiming for, and the path from the backfield to it
+        const a = G.aim, rbx = los - 72, rby = 310;
+        s += `<path d="M ${rbx} ${rby} Q ${los - 20} ${a.y} ${a.x} ${a.y}" stroke="#fff" stroke-width="3" stroke-dasharray="9 7" fill="none" opacity=".85" marker-end="url(#arrow)"/>`;
+        s += `<g transform="translate(${a.x} ${a.y})"><circle r="16" fill="none" stroke="#ffd166" stroke-width="3"/><circle r="4" fill="#ffd166"/><line x1="-24" x2="-18" y1="0" y2="0" stroke="#ffd166" stroke-width="3"/><line x1="18" x2="24" y1="0" y2="0" stroke="#ffd166" stroke-width="3"/><line y1="-24" y2="-18" x1="0" x2="0" stroke="#ffd166" stroke-width="3"/><line y1="18" y2="24" x1="0" x2="0" stroke="#ffd166" stroke-width="3"/></g>`;
       }
       s += dot(los - 70, 266, L.qb.num, col, alt);
       const dc = def.color, da = def.alt;
@@ -577,7 +603,7 @@ function runoff(pending, tempo) {
 }
 function renderPlay() {
   const st = G.st, sc = G.sc;
-  if (!st.look && !G.done) st.look = sampleLook(st); // the defense shows its look once per snap
+  if (!st.look && !G.done) { st.look = sampleLook(st); st.lookSide = rand() < 0.5 ? 'L' : 'R'; } // the defense shows its look once per snap
   const sitBits = [`<b>${downText(st)}</b>`, `ball on the ${esc(spot(st.ytg, sc))}`];
   if (st.pending > 0) sitBits.push(`<b style="color:var(--amber)">clock running</b>`); else sitBits.push('clock stopped');
   app.innerHTML = `<div class="game">
@@ -593,6 +619,17 @@ function renderPlay() {
   renderSide();
   if (G.anim) { const a = G.anim; requestAnimationFrame(() => requestAnimationFrame(() => { const b = $('#ball'); if (b) b.style.transform = `translate(${100 + (100 - a.to) * 10}px, ${a.y}px)`; })); }
   $('#field').querySelectorAll('[data-rec]').forEach(g => g.onclick = () => cycleRoute(g.dataset.rec));
+  if (G.picking === 'run') {
+    const svg = $('#field svg');
+    svg.style.cursor = 'crosshair';
+    svg.onclick = e => {
+      const p = fieldPoint(svg, e); if (!p) return;
+      const L = los(G.st);
+      G.aim = { x: clamp(p.x, L - 5, Math.min(L + 220, 1115)), y: clamp(p.y, 30, 503) };
+      G.runSide = G.aim.y < 266 ? 'L' : 'R';
+      renderPlay();
+    };
+  }
 }
 
 function logHTML() {
@@ -624,6 +661,21 @@ function renderSide() {
   if (G.done) return;
   if (G.animating) { side.innerHTML = `<div class="snapping"><span class="spin"></span> Snap…</div><div class="note">Tap the field to skip.</div>`; return; }
   let h = resultHTML();
+  if (G.picking === 'run') {
+    const rs = G.runSide, aim = G.aim;
+    const lane = aim ? laneOf(aim) : null;
+    const concepts = ['r_in', 'r_power', 'r_counter', 'r_out', 'r_toss', 'r_draw', 'r_qb', 'r_sneak'].filter(id => available(st, id));
+    h += `<div class="grp"><div class="h">Run <button class="back" id="back">◀ Back</button></div>
+      <div class="note">${aim ? `Aim point set: <b>${esc(laneWord(lane))}, ${rs === 'L' ? 'left' : 'right'}</b>, ${Math.round((aim.x - los(st)) / 10)} yards past the line. Pick how he gets there.` : 'Tap the field where you want him to hit the hole, or pick a concept and a side.'}</div>
+      <div class="mods"><span class="gl">Side</span><button class="mod" data-side="L" aria-pressed="${rs === 'L'}">◀ Left</button><button class="mod" data-side="R" aria-pressed="${rs === 'R'}">Right ▶</button>${aim ? '<button class="mod" id="clearAim">Clear aim</button>' : ''}<span class="note">${st.look === 'loaded' || st.look === 'blitz' ? `Extra defender on the ${st.lookSide === 'L' ? 'left' : 'right'}.` : ''}</span></div>
+      <div class="calls">${concepts.map(id => { const c = CALLS[id]; const fits = !aim || !lane || c.lane === lane || (lane === 'tackle' && (c.lane === 'in' || c.lane === 'out')) || c.qb; return `<button class="call ${fits ? '' : 'dim'}" data-rcall="${id}"><b>${runIcon(id, rs)}${esc(c.label)}</b><small>${esc(c.sub)}${c.qb ? ` · ${esc(short(sc.lineup.qb.name))}` : ` · ${esc(short(sc.lineup.rb.name))}`}</small></button>`; }).join('')}</div></div>`;
+    side.innerHTML = h;
+    $('#back').onclick = () => { G.picking = null; G.aim = null; renderPlay(); };
+    side.querySelectorAll('[data-side]').forEach(b => b.onclick = () => { G.runSide = b.dataset.side; if (G.aim) G.aim = { ...G.aim, y: 266 + (G.runSide === 'L' ? -1 : 1) * Math.abs(G.aim.y - 266) }; renderPlay(); });
+    const ca = $('#clearAim'); if (ca) ca.onclick = () => { G.aim = null; renderPlay(); };
+    side.querySelectorAll('[data-rcall]').forEach(b => b.onclick = () => { const id = b.dataset.rcall; runPlay(id, null, { side: G.runSide, aim: G.aim ? { ...G.aim } : null, lane: G.aim ? laneOf(G.aim) : CALLS[id].lane }); });
+    return;
+  }
   if (G.picking === 'pass') {
     const recs = receivers(sc);
     const m = G.mods, nb = blockers();
@@ -652,7 +704,7 @@ function renderSide() {
   }
   h += `<div class="h">Your call <span>${downText(st)} · ${esc(spot(st.ytg, sc))}</span></div>`;
   const lk = LOOKS[st.look || 'base'];
-  h += `<div class="look"><span class="gl">Defense</span><b>${esc(lk.label)}</b><small>${esc(lk.sub)}</small></div>`;
+  h += `<div class="look"><span class="gl">Defense</span><b>${esc(lk.label)}</b><small>${esc(lookSub(st))}</small></div>`;
   if (st.pending > 0) {
     const off = G.useTO ? 0 : runoff(st.pending, G.tempo);
     const tempoBtn = (k, label, sub) => `<button class="mod" data-tempo="${k}" aria-pressed="${G.tempo === k}" title="${esc(sub)}">${label}</button>`;
@@ -668,8 +720,8 @@ function renderSide() {
       if (!ok && (id === 'r_sneak' || id === 'hail' || id === 'kneel' || id === 'punt')) continue;
       let sub = c.sub;
       if (id === 'fg') sub = ok ? `${st.ytg + 17}-yard try · ${pct(fgProb(st.ytg, sc.kick))} make rate${sc.kick >= .04 ? ' · strong kicker' : sc.kick <= -.04 ? ' · shaky kicker' : ''}` : 'Out of range';
-      if (id === 'r_in' || id === 'r_out') sub += ` · ${short(sc.lineup.rb.name)}`;
-      h += `<button class="call ${id === 'pass' ? 'wide' : ''}" data-call="${id}" ${ok ? '' : 'disabled'}><b>${esc(c.label)}</b><small>${esc(sub)}</small></button>`;
+      if (id === 'run') sub += ` · ${short(sc.lineup.rb.name)}`;
+      h += `<button class="call ${id === 'pass' || id === 'run' ? 'wide' : ''}" data-call="${id}" ${ok ? '' : 'disabled'}><b>${esc(c.label)}</b><small>${esc(sub)}</small></button>`;
     }
     h += `</div></div>`;
   }
@@ -681,6 +733,20 @@ function renderSide() {
     if (CALLS[id].pick) { G.picking = id; renderPlay(); return; }
     runPlay(id, null);
   });
+}
+// run aiming: field px -> lane. Left is the top of the field (the offense moves right, so its left hand points up).
+const los = st => 100 + (100 - st.ytg) * 10;
+function laneOf(aim) { const dy = Math.abs(aim.y - 266); return dy < 38 ? 'in' : dy < 85 ? 'tackle' : 'out'; }
+const laneWord = lane => ({ in: 'inside', tackle: 'off tackle', out: 'outside' }[lane] || 'inside');
+function runIcon(id, side) {
+  const s = side === 'L' ? -1 : 1;
+  const P = { r_in: `l 14 0 l 12 ${s * 4}`, r_power: `l 10 0 l 10 ${s * 9} l 8 0`, r_counter: `l 5 ${-s * 7} l 8 ${s * 16} l 12 0`, r_out: `l 6 ${s * 12} l 20 ${s * 2}`, r_toss: `m 0 0 l 0 ${s * 12} l 24 ${s * 3}`, r_draw: `l -8 0 l 20 0 l 10 ${s * 5}`, r_qb: `l 6 ${s * 8} l 18 0`, r_sneak: `l 20 0` }[id] || 'l 20 0';
+  return `<svg viewBox="-12 -18 44 36" width="30" height="24" aria-hidden="true" style="vertical-align:middle;margin-right:4px"><path d="M 0 0 ${P}" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle r="2.6" fill="currentColor"/></svg>`;
+}
+function fieldPoint(svg, e) {
+  const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  const m = svg.getScreenCTM(); if (!m) return null;
+  const p = pt.matrixTransform(m.inverse()); return { x: p.x, y: p.y };
 }
 function cycleRoute(slot) {
   const pos = slot.replace(/\d/, '');
@@ -720,9 +786,11 @@ function narrate(id, o, r, tgt, sc, mods = {}) {
     if (!(o.f & 1)) return `${who}throws for ${to} ${where}: incomplete.`;
     return `${who}finds ${to} ${where} for ${o.y >= 0 ? yds(r.yards) : 'a loss of ' + yds(o.y)}.${tail}`;
   }
-  const runner = id === 'r_qb' || id === 'r_sneak' ? qb : rb;
-  const how = { r_in: 'up the middle', r_out: 'to the outside', r_qb: 'on a keeper', r_sneak: 'on a sneak' }[id];
-  return `${runner} runs ${how} for ${r.yards < 0 ? 'a loss of ' + yds(r.yards) : r.yards === 0 ? 'no gain' : yds(r.yards)}.${tail}`;
+  const runner = c.qb ? qb : rb;
+  const how = c.say || 'up the middle';
+  const dir = mods.side && !['r_sneak', 'r_in', 'r_draw'].includes(id) ? ` to the ${mods.side === 'L' ? 'left' : 'right'}` : '';
+  const lead = c.toss ? `${qb} pitches to ${rb}, who goes${dir} for ` : c.draw ? `${qb} drops, hands it late to ${rb}${dir} for ` : `${runner} runs ${how}${dir} for `;
+  return `${lead}${r.yards < 0 ? 'a loss of ' + yds(r.yards) : r.yards === 0 ? 'no gain' : yds(r.yards)}.${tail}`;
 }
 
 function runPlay(id, tgt, mods = {}) {
@@ -768,7 +836,7 @@ function runPlay(id, tgt, mods = {}) {
     : { cls: 'low', text: `${costWord[rand() < 0.6 ? 0 : 1 + Math.floor(rand() * 2)]} ${esc(opts[0].label)} was worth ${Math.round(gap * 100)} more points of win chance.`, e: '🟥' };
   G.grades.push(grade.e);
   const coachCall = G.st.snaps === 0 ? coachOpening(sc) : null;
-  const callLabel = mods.route ? `${ROUTES[mods.route].label} to ${short(tgt.name)}` : tgt ? `${CALLS[id].label} to ${short(tgt.name)}` : CALLS[id].label;
+  const callLabel = mods.route ? `${ROUTES[mods.route].label} to ${short(tgt.name)}` : tgt ? `${CALLS[id].label} to ${short(tgt.name)}` : CALLS[id].run && mods.side && !['r_sneak', 'r_in', 'r_draw'].includes(id) ? `${CALLS[id].label} ${mods.side === 'L' ? 'left' : 'right'}` : CALLS[id].label;
   G.snaps.push({ sit: `${downText(st)} · ${spot(st.ytg, sc)} · ${clock(st.T)}`, call: callLabel + (mods.pa ? ' (play action)' : mods.roll ? ' (roll out)' : ''), text, wpBefore, wpAfter: r.end ? endValue(n, r.end) : contValue(n), e: grade.e, best: opts[0]?.label, kind: id.startsWith('p_') || id === 'hail' ? 'pass' : id.startsWith('r_') ? 'run' : id, down: st.down, dist: st.dist, deep: CALLS[id].depth === 'deep' || id === 'hail', short: mods.route ? ROUTES[mods.route].label : CALLS[id].label });
   const wpAfter = r.end ? endValue(n, r.end) : contValue(n);
   let badge = o.flag ? 'FLAG' : r.td ? 'TD' : o.fg ? (o.made ? 'FG' : 'NO') : (o.f & 8) ? 'TO' : o.spike ? 'SPK' : (r.incomplete ? 'INC' : (r.yards > 0 ? '+' : '') + r.yards);
@@ -784,7 +852,7 @@ function runPlay(id, tgt, mods = {}) {
     real: o.src && o.src[4] ? `${o.src[4]} (${T_(g[4]).school} ${g[5] ? 'vs' : 'at'} ${T_(g[3]).school}, ${g[0]})` : null,
   };
   const isPass = id.startsWith('p_') || id === 'hail';
-  G.last = null; G.anim = null; G.picking = null; G.pickerSlot = null;
+  G.last = null; G.anim = null; G.picking = null; G.pickerSlot = null; G.aim = null;
   // Animate the snap from the pre-snap state, then land the result
   // animate the play that happened on the field (a live-ball flag shows the play, then the flag)
   const shown = o.flag && !o.pre ? played : o;
@@ -800,7 +868,8 @@ function runPlay(id, tgt, mods = {}) {
     targetSlot: tgt ? tgt.slot : null, rbTarget: id === 'p_rb', depth: CALLS[id].depth || (id === 'p_rb' ? 'short' : null), hail: id === 'hail',
     pa: !!mods.pa, roll: !!mods.roll, sack: !!(shown.f & 16), strip: !!shown.strip, int: !!shown.int, intTd: !!(shown.f & 32), complete: !!(shown.f & 1),
     td: shownR.td, oob: shownR.oob, yards: shownR.yards, first: shownR.first, finalYtg: shownR.td ? 0 : finalYtg, fumble: !!shown.fumble,
-    outside: id === 'r_out', qbRun: id === 'r_qb' || id === 'r_sneak' || !!shown.scramble, sneak: id === 'r_sneak', made: !!shown.made,
+    outside: CALLS[id].lane === 'out', qbRun: !!CALLS[id].qb || !!shown.scramble, sneak: id === 'r_sneak', made: !!shown.made,
+    runType: CALLS[id].run ? id : null, side: mods.side === 'L' ? -1 : 1, aim: mods.aim || null, lane: mods.lane || CALLS[id].lane || null,
     dropped: !(shown.f & 1) && !shown.int && srcText.includes('drop'), pbu: srcText.includes('broken up'), contested: srcText.includes('contested'),
     hurried: srcText.includes('hurried') || srcText.includes('pressure'),
   };

@@ -132,14 +132,28 @@
       if (S.scramble) { sc.throwAt = 99; sc.airX = null; sc.scrambleAt = sc.snapAt + 1.5; }
       if (S.hurried && !S.sack) sc.pressureAt = sc.snapAt + 0.4;
     } else if (S.kind === 'run') {
-      sc.handAt = sc.snapAt + (S.qbRun ? 0 : 0.35);
+      // the concept sets how the back gets to the hole; the aim point (if you tapped one) is the hole itself
+      const type = S.runType || (S.outside ? 'r_out' : 'r_in');
+      sc.toss = type === 'r_toss'; sc.draw = type === 'r_draw'; sc.counter = type === 'r_counter';
+      sc.handAt = sc.snapAt + (S.qbRun && !S.scramble ? 0 : sc.draw ? 0.95 : sc.toss ? 0.3 : 0.35);
       const carrier = S.qbRun ? W.qb : W.rb;
       sc.carrier = carrier;
-      const side = carrier.y >= MID ? 1 : -1;
+      const side = S.side || (carrier.y >= MID ? 1 : -1);
+      const lane = S.lane || (S.outside ? 'out' : 'in');
+      const laneY = lane === 'in' ? MID + side * rnd(8, 35) : lane === 'tackle' ? MID + side * rnd(50, 80) : MID + side * rnd(140, 190);
+      const hole = S.aim ? { x: Math.max(S.aim.x, los + 4), y: S.aim.y } : { x: los + (lane === 'out' ? 12 : 22), y: laneY };
+      sc.hole = hole; sc.side = side;
       const pts = [];
       if (S.sneak) pts.push({ x: finalX, y: MID + rnd(-8, 8) });
-      else if (S.outside) { pts.push({ x: los - 28, y: MID + side * 115 }); pts.push({ x: los + 12, y: MID + side * 150 }); pts.push({ x: finalX, y: clamp(MID + side * rnd(140, 200), TOPY + 18, BOTY - 18) }); }
-      else { const hole = MID + (Math.random() < 0.5 ? -1 : 1) * rnd(10, 40); pts.push({ x: los - 10, y: hole }); pts.push({ x: los + 22, y: hole + rnd(-15, 15) }); pts.push({ x: finalX, y: clamp(hole + rnd(-70, 70), TOPY + 18, BOTY - 18) }); }
+      else {
+        if (sc.counter) { pts.push({ x: los - 38, y: carrier.y - side * 45 }); pts.push({ x: los - 14, y: MID + side * 15 }); }
+        else if (sc.toss) { pts.push({ x: los - 40, y: MID + side * 95 }); }
+        else if (lane === 'out') { pts.push({ x: los - 28, y: MID + side * 110 }); }
+        else if (sc.draw) { pts.push({ x: los - 30, y: MID + side * 10 }); }
+        else { pts.push({ x: los - 10, y: hole.y + (carrier.y > hole.y ? 10 : -10) }); }
+        pts.push({ x: hole.x, y: hole.y });
+        pts.push({ x: finalX, y: clamp(hole.y + side * rnd(-20, 60), TOPY + 18, BOTY - 18) });
+      }
       if (S.yards <= -2 && !S.sneak) { pts.length = 0; pts.push({ x: los - 12, y: carrier.y + side * 20 }); pts.push({ x: finalX, y: carrier.y + side * 35 }); sc.tfl = true; }
       if (S.oob) pts[pts.length - 1].y = pts[pts.length - 1].y > MID ? BOTY - 4 : TOPY + 4;
       sc.runPts = pts;
@@ -182,10 +196,11 @@
     }
     const q = W.qb;
     const isRun = S.kind === 'run';
+    const fire = isRun && !(sc.draw && !sc.handed); // a draw shows pass protection until the handoff
     // --- line play: pass sets back and the pocket collapses; run fires out ---
     for (const o of W.ol) {
-      const tx = isRun ? o.x0 + 14 : o.x0 - 8 - Math.min(after, 2.5) * 10;
-      o.seek(tx, o.y0 + (isRun ? (o.y0 > MID ? 6 : -6) : 0), dt, 0.6);
+      const tx = fire ? o.x0 + 14 : o.x0 - 8 - Math.min(after, 2.5) * 10;
+      o.seek(tx, o.y0 + (fire ? (o.y0 > MID ? 6 : -6) : 0), dt, 0.6);
     }
     for (const d of W.dl) {
       if (d === sc.freeRusher) { d.seek(q.x, q.y, dt, 1.05, false); continue; }
@@ -239,7 +254,8 @@
       b.x = f.from.x + (f.to.x - f.from.x) * s; b.y = f.from.y + (f.to.y - f.from.y) * s; b.h = Math.sin(s * Math.PI) * f.h;
       if (s >= 1) {
         b.flying = null; b.h = 0;
-        if (S.kind === 'fg') { sc.endAt = t + 0.9; W.pops.push({ t, text: S.made ? 'GOOD!' : 'NO GOOD', bad: !S.made, good: S.made }); }
+        if (isRun) { const c = sc.carrier; b.carrier = c; c.carrying = true; } // the toss arrives
+        else if (S.kind === 'fg') { sc.endAt = t + 0.9; W.pops.push({ t, text: S.made ? 'GOOD!' : 'NO GOOD', bad: !S.made, good: S.made }); }
         else if (S.int) {
           const p = sc.picker; p.x = b.x; p.y = b.y; b.carrier = p; p.returning = true; p.intercept = null;
           p.plan = { pts: [{ x: S.intTd ? 60 : Math.max(110, b.x - 120), y: clamp(p.y + rnd(-80, 80), TOPY + 20, BOTY - 20) }], i: 0 };
@@ -268,8 +284,21 @@
     // --- run game ---
     if (isRun) {
       const c = sc.carrier;
-      if (!sc.handed && t >= sc.handAt) { sc.handed = true; b.carrier = c; c.carrying = true; c.plan = { pts: sc.runPts, i: 0 }; assignTackler(W, sc, c); if (sc.tfl) { const lb = W.lb[0]; lb.tackler = true; lb.speedMul = 1.2; sc.tackler = lb; } }
-      if (!sc.handed) { if (c !== q) c.seek(q.x + 10, q.y + 25, dt, 0.6); else q.seek(los - 72, MID, dt, 0.5); }
+      if (!sc.handed && t >= sc.handAt) {
+        sc.handed = true; c.plan = { pts: sc.runPts, i: 0 }; assignTackler(W, sc, c);
+        if (sc.toss) { b.carrier = null; b.flying = { from: { x: q.x, y: q.y }, to: { x: c.x + 12, y: c.y + sc.side * 6 }, t0: t, dur: 0.32, h: 14 }; }
+        else { b.carrier = c; c.carrying = true; }
+        if (sc.tfl) { const lb = W.lb[sc.side > 0 ? 1 : 0]; lb.tackler = true; lb.speedMul = 1.2; sc.tackler = lb; }
+      }
+      if (!sc.handed) { // before the exchange: the back sets up the concept, the QB sells it
+        if (c !== q) {
+          if (sc.toss) c.seek(los - 40, MID + sc.side * 95, dt, 0.9, false);
+          else if (sc.draw) c.seek(los - 78, MID + sc.side * 14, dt, 0.5);
+          else if (sc.counter) c.seek(los - 60, c.y - sc.side * 20, dt, 0.7);
+          else c.seek(q.x + 10, q.y + 25, dt, 0.6);
+          if (sc.draw) q.seek(los - 100, MID, dt, 0.85); else q.seek(los - 72, MID + (sc.toss ? sc.side * 10 : 0), dt, 0.5);
+        } else q.seek(los - 72, MID, dt, 0.5);
+      }
       if (sc.handed && c.plan && !c.down) {
         const fin = c.follow(dt, 1);
         if (fin) { c.down = true; sc.endAt = sc.endAt || t + (S.fumble ? 1.2 : 0.7);
