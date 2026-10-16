@@ -40,17 +40,35 @@ const CALLS = {
   r_out:  { grp: 'Run', label: 'Outside run', sub: 'RB to the edge', dur: 6 },
   r_qb:   { grp: 'Run', label: 'QB keeper', sub: 'Designed QB run', dur: 5 },
   r_sneak:{ grp: 'Run', label: 'QB sneak', sub: 'Short yardage push', dur: 3 },
-  p_short_side: { grp: 'Pass', label: 'Quick out', sub: 'Short, toward the sideline', dur: 5, depth: 'short', side: 'side', pick: true },
-  p_short_mid:  { grp: 'Pass', label: 'Slant / dig', sub: 'Short, over the middle', dur: 5, depth: 'short', side: 'mid', pick: true },
-  p_deep_side:  { grp: 'Pass', label: 'Go / fade', sub: 'Deep, toward the sideline', dur: 7, depth: 'deep', side: 'side', pick: true },
-  p_deep_mid:   { grp: 'Pass', label: 'Post / seam', sub: 'Deep, down the middle', dur: 7, depth: 'deep', side: 'mid', pick: true },
-  p_rb:   { grp: 'Pass', label: 'Check-down', sub: 'Dump it to the back', dur: 5 },
-  hail:   { grp: 'Pass', label: 'Hail Mary', sub: 'Everyone to the end zone', dur: 9 },
+  pass:   { grp: 'Pass', label: 'Pass', sub: 'Pick a route for each receiver, then throw', dur: 5, pick: true },
+  p_short_side: { label: 'Out', dur: 5, depth: 'short', side: 'side' },
+  p_short_mid:  { label: 'Slant', dur: 5, depth: 'short', side: 'mid' },
+  p_deep_side:  { label: 'Go', dur: 7, depth: 'deep', side: 'side' },
+  p_deep_mid:   { label: 'Post', dur: 7, depth: 'deep', side: 'mid' },
+  p_rb:   { label: 'Screen', sub: 'To the back, blockers in front', dur: 5 },
+  hail:   { label: 'Hail Mary', sub: 'Everyone to the end zone', dur: 9 },
   spike:  { grp: 'Clock & kicks', label: 'Spike it', sub: 'Stop the clock, lose a down', dur: 1 },
   kneel:  { grp: 'Clock & kicks', label: 'Kneel', sub: 'Run the clock', dur: 2 },
   fg:     { grp: 'Clock & kicks', label: 'Field goal', sub: '', dur: 5 },
   punt:   { grp: 'Clock & kicks', label: 'Punt', sub: 'Flip the field', dur: 7 },
 };
+// Routes a receiver can run. Each maps to a pool of real snaps (depth x side); dur is the extra time a longer route takes.
+const ROUTES = {
+  out:    { label: 'Out', id: 'p_short_side', dur: 0, say: 'on an out' },
+  slant:  { label: 'Slant', id: 'p_short_mid', dur: 0, say: 'on a slant' },
+  curl:   { label: 'Curl', id: 'p_short_side', dur: 1, say: 'on a curl' },
+  dig:    { label: 'Dig', id: 'p_short_mid', dur: 1, say: 'on a dig' },
+  go:     { label: 'Go', id: 'p_deep_side', dur: 2, say: 'on a go route' },
+  corner: { label: 'Corner', id: 'p_deep_side', dur: 2, say: 'on a corner route' },
+  post:   { label: 'Post', id: 'p_deep_mid', dur: 2, say: 'on a post' },
+  seam:   { label: 'Seam', id: 'p_deep_mid', dur: 2, say: 'up the seam' },
+  flat:   { label: 'Flat', id: 'p_rb', dur: 0, say: 'in the flat' },
+  angle:  { label: 'Angle', id: 'p_rb', dur: 0, say: 'on an angle route' },
+  wheel:  { label: 'Wheel', id: 'p_deep_side', dur: 2, say: 'on a wheel route' },
+};
+const ROUTE_CYCLE = { WR: ['out', 'slant', 'curl', 'dig', 'go', 'corner', 'post'], TE: ['out', 'slant', 'curl', 'dig', 'seam', 'corner'], RB: ['flat', 'angle', 'wheel'] };
+const DEFAULT_ROUTES = { WR0: 'go', WR1: 'out', WR2: 'slant', TE: 'dig', RB: 'flat' };
+function routeOk(st, key) { const r = ROUTES[key]; return r.id === 'p_deep_side' ? st.ytg > 20 : r.id === 'p_deep_mid' ? st.ytg > 25 : true; }
 function available(st, id) {
   switch (id) {
     case 'r_sneak': return st.dist <= 2;
@@ -81,7 +99,7 @@ function tilted(key, rows, adv) {
 }
 
 // Distribution of outcomes for a call: [{p, y, f, src}]
-function outcomes(st, id, tgt) {
+function outcomes(st, id, tgt, mods = {}) {
   const S = st.sc, L = S.lineup, z = zoneOf(st.ytg), dg = st.down >= 3 ? 'L' : 'E', sy = st.dist <= 2 ? 'S' : 'N';
   const out = [];
   const addPool = (key, rows, adv, mass) => { const w = tilted(key, rows, adv); rows.forEach((r, i) => out.push({ p: mass * w[i], y: r[0], f: r[1], src: r })); };
@@ -97,10 +115,11 @@ function outcomes(st, id, tgt) {
   if (id.startsWith('p_')) {
     const c = CALLS[id];
     const rec = tgt ?? (id === 'p_rb' ? L.rec.find(r => r.pos === 'RB') : null);
-    const adv = S.orat.op + S.drat.dp + (rec ? rec.adj * .6 : 0);
-    const depthF = id === 'p_rb' ? .55 : c.depth === 'deep' ? 1.35 : .85;
-    const intF = id === 'p_rb' ? .45 : c.depth === 'deep' ? 1.9 : c.side === 'mid' ? 1.05 : .75;
-    const pSack = clamp((dg === 'L' ? D.rates.sackL : lgSack) * depthF * Math.sqrt((L.qb.sack || lgSack) / lgSack) * (1 + S.drat.dp), .01, .2);
+    // play action sells the run: deep throws open up, but the QB holds it longer; a roll-out shortens the sack window and favors the sideline
+    const adv = S.orat.op + S.drat.dp + (rec ? rec.adj * .6 : 0) + (mods.pa ? (c.depth === 'deep' ? .04 : -.01) : 0) + (mods.roll ? (c.side === 'side' ? .015 : -.02) : 0);
+    const depthF = (id === 'p_rb' ? .55 : c.depth === 'deep' ? 1.35 : .85) * (mods.pa ? 1.3 : 1) * (mods.roll ? .75 : 1);
+    const intF = (id === 'p_rb' ? .45 : c.depth === 'deep' ? 1.9 : c.side === 'mid' ? 1.05 : .75) * (mods.roll ? .9 : 1);
+    const pSack = clamp((dg === 'L' ? D.rates.sackL : lgSack) * depthF * Math.sqrt((L.qb.sack || lgSack) / lgSack) * (1 + S.drat.dp), .01, .22);
     const pInt = clamp(lgInt * intF * Math.sqrt((L.qb.int || lgInt) / lgInt) * (1 + 2 * S.drat.dp), .004, .12) * (1 - pSack);
     const [sk, srows] = pool('sack_' + z, 'sack_o');
     addPool(sk, srows, 0, pSack);
@@ -191,9 +210,9 @@ function contValue(n) {
   if (T <= 0) return wpModel(n.s, 0, n.ytg, n.down, n.dist, n.to, n.dto, n.elo);
   return wpModel(n.s, T, n.ytg, n.down, n.dist, n.to, n.dto, n.elo);
 }
-function expected(st, id, tgt) {
+function expected(st, id, tgt, mods = {}) {
   let ev = 0;
-  for (const o of outcomes(st, id, tgt)) {
+  for (const o of outcomes(st, id, tgt, mods)) {
     if (o.p <= 0) continue;
     const { n, r } = apply(st, id, o);
     ev += o.p * (r.end ? endValue(n, r.end) : contValue(n));
@@ -204,10 +223,13 @@ function expected(st, id, tgt) {
 function scoreOptions(st) {
   const L = st.sc.lineup, rows = [];
   for (const id of Object.keys(CALLS)) {
-    if (!available(st, id)) continue;
-    if (CALLS[id].pick) {
-      for (const rc of L.rec.filter(r => r.pos !== 'RB')) rows.push({ id, tgt: rc, ev: expected(st, id, rc), label: `${CALLS[id].label} to ${short(rc.name)}` });
-    } else rows.push({ id, ev: expected(st, id), label: CALLS[id].label });
+    if (!available(st, id) || id === 'pass') continue;
+    const c = CALLS[id];
+    if (c.depth) {
+      for (const rc of L.rec.filter(r => r.pos !== 'RB')) rows.push({ id, tgt: rc, ev: expected(st, id, rc), label: `${c.label} to ${short(rc.name)}` });
+    } else if (id === 'p_rb') {
+      const rb = L.rec.find(r => r.pos === 'RB'); if (rb) rows.push({ id, tgt: rb, ev: expected(st, id, rb), label: `Screen to ${short(rb.name)}` });
+    } else rows.push({ id, ev: expected(st, id), label: c.label });
   }
   return rows.sort((a, b) => b.ev - a.ev);
 }
@@ -243,7 +265,7 @@ function newGame(sc, mode, no) {
   G = {
     mode, no, sc, log: [], grades: [],
     st: { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0 },
-    useTO: false, picking: null, last: null, busy: false, done: null,
+    useTO: false, picking: null, last: null, busy: false, done: null, routes: { ...DEFAULT_ROUTES }, mods: {},
   };
   G.wp0 = wpModel(G.st.s, G.st.T, G.st.ytg, G.st.down, G.st.dist, G.st.to, G.st.dto, G.st.elo);
 }
@@ -253,6 +275,7 @@ function fieldSVG(st, sc, anim) {
   const off = T_(sc.off), def = T_(sc.dfn);
   const X = ytg => 100 + (100 - ytg) * 10; // our team drives left to right
   let s = `<svg viewBox="0 0 1200 533" role="img" aria-label="Field: ball on the ${esc(spot(st.ytg, sc))}">`;
+  s += `<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#fff"/></marker></defs>`;
   s += `<rect width="1200" height="533" fill="var(--turf)"/>`;
   for (let i = 0; i < 20; i++) if (i % 2) s += `<rect x="${100 + i * 50}" width="50" height="533" fill="var(--turf-2)"/>`;
   s += `<rect width="100" height="533" fill="${off.color}" opacity=".85"/><rect x="1100" width="100" height="533" fill="${def.color}" opacity=".85"/>`;
@@ -272,16 +295,15 @@ function fieldSVG(st, sc, anim) {
     if (st.dist < st.ytg) s += `<line x1="${fd}" x2="${fd}" y1="0" y2="533" stroke="#f6d32d" stroke-width="5"/>`;
     // formation (offense faces right)
     const L = sc.lineup, col = off.color, alt = off.alt;
-    const dot = (x, y, num, fill, stroke, r = 15) => `<g><circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="3"/><text x="${x}" y="${y + 1}" fill="${stroke}" font-family="Saira Condensed, sans-serif" font-weight="700" font-size="16" text-anchor="middle" dominant-baseline="middle">${esc(num)}</text></g>`;
+    const dot = (x, y, num, fill, stroke, r = 15, attr = '') => `<g ${attr}><circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="3"/><text x="${x}" y="${y + 1}" fill="${stroke}" font-family="Saira Condensed, sans-serif" font-weight="700" font-size="16" text-anchor="middle" dominant-baseline="middle">${esc(num)}</text></g>`;
     {
       [-60, -30, 0, 30, 60].forEach(dy => { s += dot(los - 18, 266 + dy, '', col, alt, 13); });
-      const wr = L.rec.filter(r => r.pos === 'WR'), te = L.rec.find(r => r.pos === 'TE');
-      if (wr[0]) s += dot(los - 18, 60, wr[0].num, col, alt);
-      if (wr[1]) s += dot(los - 30, 470, wr[1].num, col, alt);
-      if (wr[2]) s += dot(los - 30, 150, wr[2].num, col, alt);
-      if (te) s += dot(los - 22, 356, te.num, col, alt);
+      const picking = G.picking === 'pass';
+      for (const r of receivers(sc)) {
+        if (picking) s += routePath(r, los, G.routes[r.slot]);
+        s += dot(los - r.dx, r.y, r.num, col, alt, 15, picking ? `data-rec="${r.slot}" style="cursor:pointer" role="button" aria-label="Change ${esc(short(r.name))}'s route"` : '');
+      }
       s += dot(los - 70, 266, L.qb.num, col, alt);
-      s += dot(los - 72, 310, L.rb.num, col, alt);
       const dc = def.color, da = def.alt;
       [[18, 236], [18, 266], [18, 296], [18, 206], [60, 230], [60, 300], [55, 150], [40, 60], [40, 470], [150, 190], [150, 350]]
         .forEach(([dx, y]) => { s += `<circle cx="${los + dx}" cy="${y}" r="11" fill="${da}" stroke="${dc}" stroke-width="4" opacity=".9"/>`; });
@@ -297,6 +319,30 @@ function fieldSVG(st, sc, anim) {
   s += `<g class="ball" id="ball" style="transform: translate(${bx}px, ${by}px)"><ellipse rx="13" ry="8" fill="#7a3f1d" stroke="#fff" stroke-width="2"/><line x1="-4" x2="4" y1="0" y2="0" stroke="#fff" stroke-width="2"/></g>`;
   s += `</svg>`;
   return s;
+}
+
+// Receivers in formation: slot, screen position (dx back from the line, y across the field) and sideline direction
+function receivers(sc) {
+  const L = sc.lineup, out = [];
+  const wr = L.rec.filter(r => r.pos === 'WR'), te = L.rec.find(r => r.pos === 'TE'), rb = L.rec.find(r => r.pos === 'RB');
+  if (wr[0]) out.push({ ...wr[0], slot: 'WR0', dx: 18, y: 60, sideDir: -1 });
+  if (wr[1]) out.push({ ...wr[1], slot: 'WR1', dx: 30, y: 470, sideDir: 1 });
+  if (wr[2]) out.push({ ...wr[2], slot: 'WR2', dx: 30, y: 150, sideDir: -1 });
+  if (te) out.push({ ...te, slot: 'TE', dx: 22, y: 356, sideDir: 1 });
+  if (rb) out.push({ ...rb, slot: 'RB', dx: 72, y: 310, sideDir: 1 });
+  return out;
+}
+function routeFor(r) { return G.routes?.[r.slot] || DEFAULT_ROUTES[r.slot] || 'out'; }
+// SVG path of a route, drawn from the receiver's spot; offense moves +x, sideline is sideDir
+function routePath(r, los, key) {
+  const x0 = los - r.dx, y0 = r.y, sd = r.sideDir, mid = y0 > 266 ? -1 : 1;
+  const P = {
+    out: `l 70 0 l 0 ${sd * 70}`, slant: `l 30 0 l 90 ${mid * 70}`, curl: `l 90 0 l -18 ${mid * 14}`, dig: `l 110 0 l 0 ${mid * 90}`,
+    go: `l 320 0`, corner: `l 130 0 l 130 ${sd * 90}`, post: `l 130 0 l 150 ${mid * 110}`, seam: `l 280 0`,
+    flat: `l 20 ${sd * 90} l 60 0`, angle: `l 40 ${sd * 60} l 80 ${-sd * 90}`, wheel: `l 30 ${sd * 80} l 240 0`,
+  }[key] || 'l 60 0';
+  const d = `M ${x0} ${y0} ${P}`;
+  return `<path d="${d}" stroke="#fff" stroke-width="3" stroke-dasharray="9 7" fill="none" opacity=".85" marker-end="url(#arrow)"/>`;
 }
 
 // ---------- rendering: shared bits ----------
@@ -366,6 +412,7 @@ function renderPlay() {
   </div>`;
   renderSide();
   if (G.anim) { const a = G.anim; requestAnimationFrame(() => requestAnimationFrame(() => { const b = $('#ball'); if (b) b.style.transform = `translate(${100 + (100 - a.to) * 10}px, ${a.y}px)`; })); }
+  $('#field').querySelectorAll('[data-rec]').forEach(g => g.onclick = () => cycleRoute(g.dataset.rec));
 }
 
 function logHTML() {
@@ -395,16 +442,24 @@ function renderSide() {
   const side = $('#side'), st = G.st, sc = G.sc;
   if (G.done) return;
   let h = resultHTML();
-  if (G.picking) {
-    const c = CALLS[G.picking];
-    const recs = sc.lineup.rec.filter(r => r.pos !== 'RB');
-    h += `<div class="grp"><div class="h">${esc(c.label)} <span>${esc(c.sub)}</span></div>
-      <button class="back" id="back">◀ Back</button>
-      <div class="note">Pick the target. Season numbers shown are per target.</div>
-      <div class="calls">${recs.map((r, i) => `<button class="call" data-tgt="${i}"><b>${esc(r.num ? '#' + r.num + ' ' : '')}${esc(short(r.name))}</b><small>${r.pos} · ${Math.round(r.c * 100)}% caught · ${r.yds.toFixed(1)} yds/target · ${r.n} targets</small></button>`).join('')}</div></div>`;
+  if (G.picking === 'pass') {
+    const recs = receivers(sc);
+    const rb = recs.find(r => r.slot === 'RB');
+    const m = G.mods;
+    h += `<div class="grp"><div class="h">Pass <button class="back" id="back">◀ Back</button></div>
+      <div class="note">Tap a receiver on the field or his route chip to change the route. Tap his name to throw it to him.</div>
+      <div class="mods"><button class="mod" data-mod="pa" aria-pressed="${!!m.pa}">Play action</button><button class="mod" data-mod="roll" aria-pressed="${!!m.roll}">Roll out</button></div>
+      <div class="calls">${recs.map(r => {
+        const key = routeFor(r), ok = routeOk(st, key);
+        return `<button class="call rec" data-tgt="${r.slot}" ${ok ? '' : 'disabled'}><span class="who"><b>${esc(r.num ? '#' + r.num + ' ' : '')}${esc(short(r.name))}</b><small>${r.pos} · ${Math.round(r.c * 100)}% caught · ${r.yds.toFixed(1)} yds/target</small></span><span class="route" data-route="${r.slot}" role="button" aria-label="Change route">${esc(ROUTES[key].label)}${ok ? '' : ' · too deep'}</span></button>`;
+      }).join('')}</div>
+      <div class="calls">${rb ? `<button class="call" data-call="p_rb"><b>Screen</b><small>To ${esc(short(rb.name))}, blockers in front</small></button>` : ''}${available(st, 'hail') ? `<button class="call" data-call="hail"><b>Hail Mary</b><small>Everyone to the end zone</small></button>` : ''}</div></div>`;
     side.innerHTML = h;
-    $('#back').onclick = () => { G.picking = null; renderSide(); };
-    side.querySelectorAll('[data-tgt]').forEach(b => b.onclick = () => runPlay(G.picking, recs[+b.dataset.tgt]));
+    $('#back').onclick = () => { G.picking = null; renderPlay(); };
+    side.querySelectorAll('[data-mod]').forEach(b => b.onclick = () => { G.mods[b.dataset.mod] = !G.mods[b.dataset.mod]; renderSide(); });
+    side.querySelectorAll('[data-route]').forEach(b => b.onclick = e => { e.stopPropagation(); cycleRoute(b.dataset.route); });
+    side.querySelectorAll('[data-tgt]').forEach(b => b.onclick = () => { const r = recs.find(x => x.slot === b.dataset.tgt); runPlay(ROUTES[routeFor(r)].id, r, { ...G.mods, route: routeFor(r) }); });
+    side.querySelectorAll('[data-call]').forEach(b => b.onclick = () => runPlay(b.dataset.call, b.dataset.call === 'p_rb' ? rb : null, { ...G.mods }));
     return;
   }
   h += `<div class="h">Your call <span>${downText(st)} · ${esc(spot(st.ytg, sc))}</span></div>`;
@@ -414,7 +469,7 @@ function renderSide() {
     h += `<div class="toggle"><span>Clock is running and you're out of timeouts. About ${st.pending}s will come off.</span></div>`;
   }
   const groups = {};
-  for (const [id, c] of Object.entries(CALLS)) (groups[c.grp] ||= []).push(id);
+  for (const [id, c] of Object.entries(CALLS)) if (c.grp) (groups[c.grp] ||= []).push(id);
   for (const [g, ids] of Object.entries(groups)) {
     h += `<div class="grp"><div class="gl">${g}</div><div class="calls">`;
     for (const id of ids) {
@@ -423,8 +478,7 @@ function renderSide() {
       let sub = c.sub;
       if (id === 'fg') sub = ok ? `${st.ytg + 17}-yard try · ${pct(fgProb(st.ytg))} make rate` : 'Out of range';
       if (id === 'r_in' || id === 'r_out') sub += ` · ${short(sc.lineup.rb.name)}`;
-      if (id === 'p_rb') { const rb = sc.lineup.rec.find(r => r.pos === 'RB'); sub += rb ? ` · ${short(rb.name)}` : ''; }
-      h += `<button class="call" data-call="${id}" ${ok ? '' : 'disabled'}><b>${esc(c.label)}</b><small>${esc(sub)}</small></button>`;
+      h += `<button class="call ${id === 'pass' ? 'wide' : ''}" data-call="${id}" ${ok ? '' : 'disabled'}><b>${esc(c.label)}</b><small>${esc(sub)}</small></button>`;
     }
     h += `</div></div>`;
   }
@@ -432,9 +486,16 @@ function renderSide() {
   const tb = $('#toBtn'); if (tb) tb.onclick = () => { G.useTO = !G.useTO; renderSide(); };
   side.querySelectorAll('[data-call]').forEach(b => b.onclick = () => {
     const id = b.dataset.call;
-    if (CALLS[id].pick) { G.picking = id; renderSide(); return; }
-    runPlay(id, id === 'p_rb' ? sc.lineup.rec.find(r => r.pos === 'RB') : null);
+    if (CALLS[id].pick) { G.picking = id; renderPlay(); return; }
+    runPlay(id, null);
   });
+}
+function cycleRoute(slot) {
+  const pos = slot.replace(/\d/, '');
+  const list = ROUTE_CYCLE[pos] || ROUTE_CYCLE.WR;
+  const cur = G.routes[slot] || DEFAULT_ROUTES[slot];
+  G.routes[slot] = list[(list.indexOf(cur) + 1) % list.length];
+  renderPlay();
 }
 
 // What did the real coach call on the opening snap?
@@ -443,7 +504,7 @@ function coachOpening(sc) {
   return r ? r.c : null;
 }
 
-function narrate(id, o, r, tgt, sc) {
+function narrate(id, o, r, tgt, sc, mods = {}) {
   const L = sc.lineup, qb = short(L.qb.name), rb = short(L.rb.name), c = CALLS[id];
   const to = tgt ? short(tgt.name) : 'the back';
   const yds = n => `${Math.abs(n)} yard${Math.abs(n) === 1 ? '' : 's'}`;
@@ -457,16 +518,18 @@ function narrate(id, o, r, tgt, sc) {
   const tail = (r.td ? ' Touchdown!' : '') + (r.oob ? ' Out of bounds.' : '') + (r.first && !r.td ? ' First down.' : '');
   if (id === 'hail') return (o.f & 1) ? `${qb} heaves it and ${to} hauls it in for ${yds(r.yards)}.${tail}` : `${qb}'s Hail Mary falls incomplete.`;
   if (id.startsWith('p_')) {
-    if (!(o.f & 1)) return `${qb}'s pass for ${to} is incomplete.`;
-    const where = c.depth ? `${c.depth} ${c.side === 'mid' ? 'over the middle' : 'to the sideline'}` : 'underneath';
-    return `${qb} finds ${to} ${where} for ${o.y >= 0 ? yds(r.yards) : 'a loss of ' + yds(o.y)}.${tail}`;
+    const lead = mods.pa ? `${qb} fakes the handoff and ` : mods.roll ? `${qb} rolls out and ` : '';
+    const where = mods.route ? ROUTES[mods.route].say : id === 'p_rb' ? 'on the screen' : c.depth ? `${c.depth} ${c.side === 'mid' ? 'over the middle' : 'to the sideline'}` : 'underneath';
+    const who = lead || `${qb} `;
+    if (!(o.f & 1)) return `${who}throws for ${to} ${where}: incomplete.`;
+    return `${who}finds ${to} ${where} for ${o.y >= 0 ? yds(r.yards) : 'a loss of ' + yds(o.y)}.${tail}`;
   }
   const runner = id === 'r_qb' || id === 'r_sneak' ? qb : rb;
   const how = { r_in: 'up the middle', r_out: 'to the outside', r_qb: 'on a keeper', r_sneak: 'on a sneak' }[id];
   return `${runner} runs ${how} for ${r.yards < 0 ? 'a loss of ' + yds(r.yards) : r.yards === 0 ? 'no gain' : yds(r.yards)}.${tail}`;
 }
 
-function runPlay(id, tgt) {
+function runPlay(id, tgt, mods = {}) {
   if (G.busy) return;
   const sc = G.sc;
   let st = { ...G.st };
@@ -480,15 +543,16 @@ function runPlay(id, tgt) {
   const opts = scoreOptions(st);
   const wpBefore = contValue(st);
   // sample an outcome
-  const dist = outcomes(st, id, tgt);
+  const dist = outcomes(st, id, tgt, mods);
   let u = rand() * dist.reduce((a, o) => a + o.p, 0), o = dist[dist.length - 1];
   for (const d of dist) { u -= d.p; if (u <= 0) { o = d; break; } }
   G.prevYtg = st.ytg;
+  if (mods.route) st = { ...st, T: Math.max(0, st.T - ROUTES[mods.route].dur) };
   const { n, r } = apply(st, id, o);
-  const text = narrate(id, o, r, tgt, sc);
+  const text = narrate(id, o, r, tgt, sc, mods);
   const sit = `${downText(st)} ${spot(st.ytg, sc)} ${clock(st.T)}`;
   G.log.push({ sit, text });
-  const ev = expected(st, id, tgt);
+  const ev = expected(st, id, tgt, mods);
   const best = opts[0]?.ev ?? ev;
   const gap = best - ev;
   const grade = gap <= 0.005 ? { cls: '', text: '✓ The best call on the board.', e: '🟩' }
@@ -509,7 +573,7 @@ function runPlay(id, tgt) {
     real: o.src && o.src[4] ? `${o.src[4]} (${T_(g[4]).school} ${g[5] ? 'vs' : 'at'} ${T_(g[3]).school}, ${g[0]})` : null,
   };
   const isPass = id.startsWith('p_') || id === 'hail';
-  G.anim = (o.fg || o.punt || o.spike) ? null : { from: st.ytg, to: clamp(n.ytg || (st.ytg - r.yards), 0, 100), pass: isPass && !(o.f & 16), high: CALLS[id].depth === 'deep' || id === 'hail', y: isPass && (o.f & 1) ? (CALLS[id].side === 'mid' ? 266 : 120) : 266 };
+  G.anim = (o.fg || o.punt || o.spike) ? null : { from: st.ytg, to: clamp(n.ytg || (st.ytg - r.yards), 0, 100), pass: isPass && !(o.f & 16), high: CALLS[id].depth === 'deep' || id === 'hail', y: isPass && (o.f & 1) ? (CALLS[id].side === 'mid' ? 266 : (tgt && tgt.y > 266 ? 420 : 110)) : 266 };
   if (isPass && !(o.f & 1) && !(o.f & 16)) G.anim.to = st.ytg;
   G.st = n; G.picking = null;
   if (r.end) {
