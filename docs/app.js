@@ -512,11 +512,11 @@ function renderPaywall(mode) {
   app.innerHTML = `<section class="intro paywall">
     <div class="eyebrow">${esc(m.eyebrow)} · locked</div>
     <h2 class="headline" style="font-size:clamp(40px,10vw,72px)">The hard<small>modes</small></h2>
-    <div class="pitch"><b>Saban mode</b>: 10% to win or worse, or two scores down. The 28–3 drives.<br><b>Cignetti mode</b>: 10–25% to win. Hard, not hopeless.<br>One unlock, both modes, a new drive of each every day.</div>
-    ${native ? `<button class="cta" id="buyBtn">Unlock both · ${esc(window.Native.price || '$0.99')}</button><button class="cta ghost" id="restoreBtn">Restore purchase</button><div class="fine" id="buyNote"></div>`
-      : `${configured ? `<a class="cta" id="stripeBtn" href="${esc(STRIPE_LINK)}">Unlock both · $0.99</a>` : `<button class="cta" disabled>Unlock both · $0.99 · checkout opens soon</button>`}
+    <div class="pitch"><b>Cignetti mode</b>: 10–25% to win. Hard, not hopeless. Start here.<br><b>Saban mode</b>: 10% to win or worse, or two scores down. The 28–3 drives.<br>One $0.99 unlock gets you both, with a new drive of each every day.</div>
+    ${native ? `<button class="cta" id="buyBtn">Unlock Cignetti + Saban · ${esc(window.Native.price || '$0.99')}</button><button class="cta ghost" id="restoreBtn">Restore purchase</button><div class="fine" id="buyNote"></div>`
+      : `${configured ? `<a class="cta" id="stripeBtn" href="${esc(STRIPE_LINK)}">Unlock Cignetti + Saban · $0.99</a>` : `<button class="cta" disabled>Unlock Cignetti + Saban · $0.99 · checkout opens soon</button>`}
          <details class="restore"><summary>I already paid</summary><div class="fine">Paste the unlock code from your first device, or the receipt email Stripe sent you.</div><div class="row"><input id="codeIn" class="codein" placeholder="Unlock code or receipt email" autocomplete="off"><button class="cta ghost" id="codeBtn">Unlock</button></div><div class="fine" id="buyNote"></div></details>
-         <div class="fine">Card payments by Stripe. One payment, both modes, forever. It's also in the <a href="https://ncaa2mindrill.com/app">app</a>.</div>`}
+         <div class="fine">Card payments by Stripe. One payment unlocks Cignetti mode and Saban mode, forever. It's also in the <a href="https://ncaa2mindrill.com/app">app</a>.</div>`}
   </section>`;
   const b = $('#buyBtn'); if (b) b.onclick = async () => { b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { toast('Unlocked. Go win.'); setTab(mode); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
   const r = $('#restoreBtn'); if (r) r.onclick = async () => { $('#buyNote').textContent = 'Checking…'; try { const ok = await window.Native.restore(); $('#buyNote').textContent = ok ? 'Restored.' : 'No previous purchase found for this account.'; if (ok) setTab(mode); } catch (e) { $('#buyNote').textContent = 'Restore failed: ' + (e && e.message || e); } };
