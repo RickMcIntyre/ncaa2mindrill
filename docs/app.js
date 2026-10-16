@@ -495,11 +495,15 @@ async function claimFromUrl() {
     if (/^cs_(live|test)_[A-Za-z0-9]+$/.test(sid)) { storeUnlock(sid); toast('Unlocked. Both modes are yours.'); return true; }
     return false;
   }
+  const looksReal = /^cs_(live|test)_[A-Za-z0-9]+$/.test(sid);
   try {
     const r = await unlockApi('/claim', { session_id: sid });
     if (r && r.ok && r.code) { storeUnlock(r.code); toast('Unlocked. Both modes are yours.'); return true; }
-    toast('Payment not confirmed yet. If you paid, use "I already paid" with your receipt email.');
-  } catch (e) { toast('Could not reach the unlock service. Try again in a minute.'); }
+    if (r && r.reason === 'unpaid') { toast('Payment not confirmed yet. If you paid, use "I already paid" with your receipt email.'); return false; }
+  } catch (e) { /* service down: fall through */ }
+  // the service couldn't answer: trust Stripe's redirect rather than strand a paying customer
+  if (looksReal) { storeUnlock(sid); toast('Unlocked. Both modes are yours.'); return true; }
+  toast('Could not confirm the payment. Try again in a minute.');
   return false;
 }
 function renderPaywall(mode) {
