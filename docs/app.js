@@ -314,6 +314,81 @@ function scoreOptions(st) {
   return rows.sort((a, b) => b.ev - a.ev);
 }
 
+// ---------- color commentary ----------
+// Dry, literal, occasionally too specific. Shows up on about a third of snaps and never twice in a row.
+const QUIPS = {
+  sack: ['The offensive line would like to be excluded from this narrative.', 'He held it for 3.1 seconds. The ball has thoughts about that.', 'A sack. The pocket became a suggestion.', 'Everyone in the stadium saw that coming except the five people paid to.'],
+  strip: ['The ball left. It did not say goodbye.', 'Strip sack. That is two bad things, stapled together.'],
+  int: ["That's their ball now. Legally.", 'The defensive back read it like it had subtitles.', 'Intercepted. He threw it to the one guy wearing the other shirt.'],
+  pick6: ['He ran it back and the band started playing without being asked.', 'A pick six. The scoreboard operator needed a moment.'],
+  fumble: ['The ball is on the ground, which is the one place it is not supposed to be.', 'Fumble. Eleven people are now very interested in one object.'],
+  tfl: ['He ran that one straight into a meeting.', 'Tackle for loss. The hole closed like a shop at 5:01.', 'Negative yards. Technically still yards.'],
+  inc: ["That one's still in the air somewhere over the student section.", 'Incomplete. The clock stops for this, per rule 3-3-2, roughly.', 'Ball meets turf. Clock meets pause. Fans meet television.', 'He threw it to a spot. The spot was open. The receiver was not.'],
+  drop: ['It hit both hands. Both of them.', 'Dropped. The receiver would like to report the ball was slippery. It was not.'],
+  pbu: ['Broken up. The corner got there first and is telling everyone about it.', 'Pass defended. The receiver and the corner have a shared memory now.'],
+  thrownaway: ['Thrown away, deliberately, which counts as a decision.', 'He threw it to the sideline. The sideline was open.'],
+  bigpass: ['Somebody check whether that corner is still enrolled.', 'Twenty-plus yards. The safety saw it. He just saw it late.', 'A big one. The press box went quiet, then loud, then quiet.'],
+  bigrun: ['He hit the hole like it owed him money.', 'Chunk play on the ground. The linebackers are now behind him, which is the wrong side.', 'Big run. Somebody in the box is being told about it right now.'],
+  td: ['Touchdown. Six points, same as it has been since 1912.', 'Touchdown. The extra point is a formality, which is what everyone says right before it is not.', 'He scored. The scoreboard has been updated. So has the mood.'],
+  fgGood: ['Kicker does kicker things.', 'Three points. He will be left alone now, as kickers prefer.', 'Good. The holder also did his job, which no one will mention.'],
+  fgMiss: ['No good. It went wide, which is the main way they go.', 'Missed. The kicker is walking off in the specific way kickers walk off.'],
+  flagOff: ['A flag. A yellow one. The worst color.', 'Penalty on the offense. Someone moved before the ball did, which is the one rule.', 'Five yards the wrong way. The drive is now longer, like a meeting.'],
+  flagDef: ['Flag on the defense. Free yards, the best kind.', 'Penalty, defense. The referee explained it to 90,000 people who already knew.', 'The defense gave you yards. Rude of them, in a helpful way.'],
+  spike: ['Spike. Ball meets ground. Clock stops. Civilization continues.', 'He spiked it. The ball is fine.'],
+  kneel: ['He took a knee. The clock is losing its mind.'],
+  timeout: ['Timeout. Everyone in the stadium is doing math.', 'Timeout called. The coach is holding a laminated sheet very close to his face.'],
+  milk: ['Milking it. The play clock has never felt so seen.', 'Letting it run. Seconds are leaving. That was the plan.'],
+  hustle: ['No huddle. No time. No regrets.', 'Hurry-up. The center is sprinting, which the center did not sign up for.'],
+  hailMiss: ['Everyone was in the end zone. The ball was not.', 'The Hail Mary was not answered. They rarely are, hence the name.'],
+  hailHit: ['He caught it. Nobody is sure how. Replay will not help.', 'Hail Mary, answered. Somebody is going to be on a poster.'],
+  scramble: ['He ran. Nobody told him to. It worked.', 'Scramble. The play broke down and he fixed it with his legs.'],
+  first: ['First down. The chains moved, which is their whole job.', 'Fresh set of downs. The sticks are being carried by two people who never get thanked.'],
+  oob: ['Out of bounds. The clock stops, the sideline reporter steps back.', 'He got out. The clock is paused. Someone exhales.'],
+  nogain: ['No gain. The ball is exactly where it was, which is at least consistent.', 'Zero yards. A play happened and nothing did.'],
+  short: ['A few yards. Honest work.', 'Short gain. The box score will remember this as a number.'],
+};
+function pickQuip(key) { const a = QUIPS[key]; return a ? a[Math.floor(rand() * a.length)] : null; }
+function maybeQuip(o, r, id, mods, st) {
+  if (G.lastQuipSnap === st.snaps - 1 && st.snaps > 0) return null; // never back to back
+  const prob = (o.flag || o.int || o.strip || r.td || o.fumble || (o.f & 16)) ? 0.6 : 0.3;
+  if (rand() > prob) return null;
+  let key = null;
+  if (o.flag) key = o.pen[0] > 0 ? 'flagDef' : 'flagOff';
+  else if (o.fg) key = o.made ? 'fgGood' : 'fgMiss';
+  else if (o.spike) key = 'spike';
+  else if (o.kneel) key = 'kneel';
+  else if (o.strip) key = 'strip';
+  else if (o.int) key = (o.f & 32) ? 'pick6' : 'int';
+  else if (o.fumble) key = 'fumble';
+  else if (o.f & 16) key = 'sack';
+  else if (o.scramble) key = 'scramble';
+  else if (id === 'hail') key = (o.f & 1) ? 'hailHit' : 'hailMiss';
+  else if (r.td) key = 'td';
+  else if (r.incomplete) { const t = (o.src && o.src[4] || '').toLowerCase(); key = t.includes('drop') ? 'drop' : t.includes('broken up') ? 'pbu' : (t.includes('hurried') || t.includes('pressure')) && rand() < 0.5 ? 'thrownaway' : 'inc'; }
+  else if ((id.startsWith('p_')) && r.yards >= 20) key = 'bigpass';
+  else if (id.startsWith('r_') && r.yards >= 12) key = 'bigrun';
+  else if (id.startsWith('r_') && r.yards <= -2) key = 'tfl';
+  else if (r.oob) key = 'oob';
+  else if (r.first) key = 'first';
+  else if (r.yards === 0) key = 'nogain';
+  else key = 'short';
+  const q = pickQuip(key);
+  if (q) G.lastQuipSnap = st.snaps;
+  return q;
+}
+const VERDICTS = {
+  win: ['You beat {c}.', 'You out-called {c}. He has a staff. You have a browser.', 'You beat {c}, who, to be fair, could not see this screen.'],
+  even: ['Dead even with {c}.', 'Dead even with {c}. Hug it out.', 'A tie with {c}, which is still a result.'],
+  loss: ['{c} wins this one.', '{c} wins this one. He does this for a living, which is not an excuse.', '{c} had the better drive. He also had the real players, which is the same excuse.'],
+};
+const PCT_LINES = [
+  [90, 'Top of the room. The simulated play-callers are made of math and you still beat them.'],
+  [70, 'Better than most of the room, which was full of spreadsheets with opinions.'],
+  [50, 'Middle of the pack. Respectable. Nobody writes a column about the middle.'],
+  [25, 'Below the middle. Some of the simulated callers were set to "guess".'],
+  [0, 'The simulated play-callers send their regards. They are not real, and they know it.'],
+];
+
 // ---------- helpers ----------
 const short = n => { const p = String(n).split(' '); return p.length > 1 ? `${p[0][0]}. ${p.slice(1).filter(x => !/^(Jr\.?|Sr\.?|II|III|IV)$/.test(x)).join(' ') || p[1]}` : n; };
 const T_ = id => D.teams[id];
@@ -538,6 +613,7 @@ function resultHTML() {
     <div class="top"><div class="yd" style="background:${color}">${esc(L.badge)}</div><div class="what"><b>${esc(L.title)}</b><div>${esc(L.text)}</div></div></div>
     <div class="wp">Win chance ${pct(L.wpBefore)} → ${pct(L.wpAfter)}</div>
     <div class="grade ${cls}">${L.grade.text}</div>
+    ${L.quip ? `<div class="quip">${esc(L.quip)}</div>` : ''}
     ${L.real ? `<div class="real">Real snap behind this result: <q>${esc(L.real)}</q></div>` : ''}
     <details class="opts"><summary>How every option scored</summary><div>${opts}</div><p class="note">Expected win chance after the snap, using every real play in each option's pool.</p></details>
   </div>`;
@@ -580,7 +656,7 @@ function renderSide() {
   if (st.pending > 0) {
     const off = G.useTO ? 0 : runoff(st.pending, G.tempo);
     const tempoBtn = (k, label, sub) => `<button class="mod" data-tempo="${k}" aria-pressed="${G.tempo === k}" title="${esc(sub)}">${label}</button>`;
-    h += `<div class="toggle col"><div class="row2"><span>Clock running. <b>${G.useTO ? 'Timeout: no time comes off.' : `About ${off}s comes off before the snap.`}</b></span>${st.to > 0 ? `<button id="toBtn" aria-pressed="${G.useTO}">${G.useTO ? 'Timeout called' : `Timeout (${st.to} left)`}</button>` : ''}</div>
+    h += `<div class="toggle col"><div class="row2"><span>Clock running. <b>${G.useTO ? 'Timeout: no time comes off.' : `About ${off}s comes off before the snap.`}</b>${st.to === 0 && !G.useTO ? ' No timeouts left. This is the part where fans yell at the television.' : ''}</span>${st.to > 0 ? `<button id="toBtn" aria-pressed="${G.useTO}">${G.useTO ? 'Timeout called' : `Timeout (${st.to} left)`}</button>` : ''}</div>
       <div class="mods"><span class="gl">Tempo</span>${tempoBtn('hustle', 'Hustle', 'Sprint to the line, snap it fast')}${tempoBtn('neutral', 'Neutral', 'Normal pace')}${tempoBtn('milk', 'Milk it', 'Let the play clock run down')}</div></div>`;
   }
   const groups = {};
@@ -656,7 +732,7 @@ function runPlay(id, tgt, mods = {}) {
   // clock between snaps: timeout, or the tempo you chose (hustle to the line, neutral, milk it)
   if (st.pending > 0) {
     if (G.useTO && st.to > 0) { st.to -= 1; G.log.push({ sit: clock(st.T), text: `${T_(sc.off).abbr} timeout` }); }
-    else { const off = runoff(st.pending, id === 'spike' ? 'hustle' : G.tempo); st.T = Math.max(0, st.T - off); if (G.tempo !== 'neutral' && id !== 'spike') G.log.push({ sit: clock(st.T + off), text: G.tempo === 'milk' ? `Milk it: ${off}s run off before the snap` : `Hustle: snapped it ${off}s later` }); }
+    else { const off = runoff(st.pending, id === 'spike' ? 'hustle' : G.tempo); st.T = Math.max(0, st.T - off); if (G.tempo !== 'neutral' && id !== 'spike') { G.log.push({ sit: clock(st.T + off), text: G.tempo === 'milk' ? `Milk it: ${off}s run off before the snap` : `Hustle: snapped it ${off}s later` }); if (rand() < 0.3) G.tempoQuip = G.tempo; } }
   }
   G.useTO = false; st.pending = 0;
   if (st.T <= 0) { G.st = st; finish({ kind: 'time' }, st); return; }
@@ -684,10 +760,12 @@ function runPlay(id, tgt, mods = {}) {
   const ev = expected(st, id, tgt, mods);
   const best = opts[0]?.ev ?? ev;
   const gap = best - ev;
-  const grade = gap <= 0.005 ? { cls: '', text: '✓ The best call on the board.', e: '🟩' }
+  const bestWord = ['✓ The best call on the board.', '✓ The best call on the board. The model and you agree, which it will not admit.', '✓ Best call available. Frame it.'];
+  const costWord = ['Costly.', 'Costly. The model winced.', 'Costly. That one goes in the film session.'];
+  const grade = gap <= 0.005 ? { cls: '', text: bestWord[rand() < 0.75 ? 0 : 1 + Math.floor(rand() * 2)], e: '🟩' }
     : gap <= 0.02 ? { cls: '', text: `Strong call, within ${Math.max(1, Math.round(gap * 100))} point${Math.round(gap * 100) > 1 ? 's' : ''} of the best (${esc(opts[0].label)}).`, e: '🟩' }
     : gap <= 0.05 ? { cls: 'mid', text: `Playable. ${esc(opts[0].label)} was worth ${Math.round(gap * 100)} more points of win chance.`, e: '🟨' }
-    : { cls: 'low', text: `Costly. ${esc(opts[0].label)} was worth ${Math.round(gap * 100)} more points of win chance.`, e: '🟥' };
+    : { cls: 'low', text: `${costWord[rand() < 0.6 ? 0 : 1 + Math.floor(rand() * 2)]} ${esc(opts[0].label)} was worth ${Math.round(gap * 100)} more points of win chance.`, e: '🟥' };
   G.grades.push(grade.e);
   const coachCall = G.st.snaps === 0 ? coachOpening(sc) : null;
   const callLabel = mods.route ? `${ROUTES[mods.route].label} to ${short(tgt.name)}` : tgt ? `${CALLS[id].label} to ${short(tgt.name)}` : CALLS[id].label;
@@ -698,8 +776,10 @@ function runPlay(id, tgt, mods = {}) {
   if (r.end?.kind === 'opp' && !o.int && !o.fumble && !o.strip && !o.fg) title = r.end.why;
   if (!r.end && !o.spike && !o.flag) title += n.pending > 0 ? ', clock running' : ', clock stopped';
   const g = o.src ? D.games[o.src[3]] : null;
+  const quip = maybeQuip(o, r, id, mods, st) || (G.tempoQuip ? (G.tempoQuip === 'milk' ? pickQuip('milk') : pickQuip('hustle')) : null);
+  G.tempoQuip = null;
   const newLast = {
-    id, tgt, opts, coachCall, grade, wpBefore, wpAfter, text, title, badge,
+    id, tgt, opts, coachCall, grade, wpBefore, wpAfter, text, title, badge, quip,
     good: r.td || (o.fg && o.made) || r.first, bad: !!(o.f & 8) || (o.fg && !o.made) || (o.f & 16),
     real: o.src && o.src[4] ? `${o.src[4]} (${T_(g[4]).school} ${g[5] ? 'vs' : 'at'} ${T_(g[3]).school}, ${g[0]})` : null,
   };
@@ -937,7 +1017,9 @@ function resultWord(sc) {
 function renderFinal() {
   const sc = G.sc, d = G.done, gl = gameLabel(sc), off = T_(sc.off), def = T_(sc.dfn);
   const diff = d.wp - sc.cwp;
-  const verdict = Math.abs(diff) < 0.02 ? `Dead even with ${sc.coach}` : diff > 0 ? `You beat ${sc.coach}` : `${sc.coach} wins this one`;
+  const vpool = VERDICTS[Math.abs(diff) < 0.02 ? 'even' : diff > 0 ? 'win' : 'loss'];
+  const vi = (G.no || sc.id) % vpool.length; // stable for the day, varied across days
+  const verdict = vpool[vi].replace('{c}', sc.coach).replace(/\.$/, '');
   const you = d.wp >= sc.cwp;
   const saban = G.mode === 'saban';
   const sabanLine = saban ? `<div class="eyebrow" style="text-align:center;color:var(--amber)">${d.wp >= 0.5 ? 'You pulled it off. Saban would nod.' : d.wp > sc.wp0 ? `You raised a ${pct(sc.wp0)} shot to ${pct(d.wp)}.` : `A ${pct(sc.wp0)} shot stayed a long shot.`}</div>` : '';
@@ -958,7 +1040,7 @@ function renderFinal() {
     </div>
     <div class="vs">
       <div id="pctCard"><div class="who">Vs simulated play-callers</div><div class="big" id="pctBig">…</div><div class="end" id="pctText">Simulating 300 college play-callers on this exact drive…</div><div class="hist" id="pctHist"></div></div>
-      <div>${res ? `<div class="who">You call it like</div><div class="big" style="font-size:30px;line-height:1.1">${esc(res.best.coach)}</div><div class="end">${esc(res.best.school)} · ${pct(res.best.pass)} pass overall, ${pct(res.best.early)} on early downs, ${pct(res.best.pd)} on passing downs</div><div class="note">You: ${pct(res.me.pass)} pass, ${pct(res.me.early)} early downs, ${pct(res.me.pd)} passing downs, ${pct(res.me.deep)} deep shots (${res.n} calls). Next closest: ${esc(res.next.map(c => c.coach).join(', '))}.</div>` : '<div class="who">You call it like</div><div class="note">Call a few plays to get a match.</div>'}</div>
+      <div>${res ? `<div class="who">You call it like</div><div class="big" style="font-size:30px;line-height:1.1">${esc(res.best.coach)}</div><div class="end">${esc(res.best.school)} · ${pct(res.best.pass)} pass overall, ${pct(res.best.early)} on early downs, ${pct(res.best.pd)} on passing downs</div><div class="note">You: ${pct(res.me.pass)} pass, ${pct(res.me.early)} early downs, ${pct(res.me.pd)} passing downs, ${pct(res.me.deep)} deep shots (${res.n} calls). Next closest: ${esc(res.next.map(c => c.coach).join(', '))}. ${res.n < 6 ? 'Small sample. Coaches get a season; you got a drive.' : res.me.pass >= 0.8 ? 'Your tendencies, his résumé. You throw a lot.' : res.me.pass <= 0.35 ? 'Your tendencies, his résumé. You run a lot, on purpose, late.' : 'Your tendencies, his résumé.'}</div>` : '<div class="who">You call it like</div><div class="note">Call a few plays to get a match.</div>'}</div>
     </div>
     <div class="sharebox">
       <canvas id="shareCanvas" width="1200" height="630" aria-label="Share card"></canvas>
@@ -988,7 +1070,8 @@ function renderFinal() {
     G.pctl = { p, n: wps.length, wps };
     const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][Math.min(n % 10, 4)] || 'th');
     $('#pctBig').innerHTML = `${ordinal(p)}<small>percentile</small>`;
-    $('#pctText').textContent = `Your ${pct(d.wp)} beat ${below} of ${wps.length} simulated college play-callers on this drive (their median: ${pct(wps.slice().sort((a, b) => a - b)[Math.floor(wps.length / 2)])}).`;
+    const pl = PCT_LINES.find(([lo]) => p >= lo)[1];
+    $('#pctText').textContent = `Your ${pct(d.wp)} beat ${below} of ${wps.length} simulated college play-callers on this drive (their median: ${pct(wps.slice().sort((a, b) => a - b)[Math.floor(wps.length / 2)])}). ${pl}`;
     const bins = new Array(10).fill(0); for (const w of wps) bins[Math.min(9, Math.floor(w * 10))]++;
     const mx = Math.max(...bins);
     $('#pctHist').innerHTML = bins.map((b, i) => `<i style="height:${Math.max(2, b / mx * 100)}%" class="${Math.floor(d.wp * 10) === i || (d.wp >= 1 && i === 9) ? 'me' : ''}" title="${i * 10}–${i * 10 + 10}%: ${b}"></i>`).join('');

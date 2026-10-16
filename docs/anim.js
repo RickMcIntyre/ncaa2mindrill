@@ -356,10 +356,14 @@
     W.ballEl.querySelector('#bb').setAttribute('transform', `translate(0 ${-b.h * 1.4}) scale(${sc})`);
     W.ballEl.querySelector('#shadow').setAttribute('opacity', b.h > 2 ? .18 : 0);
   }
+  // once in a while the popup says what everyone in the stands said
+  const ALT = { 'SACKED!': ['FOLDED!', 'DOWN GOES THE QB'], 'INTERCEPTED!': ["THAT'S THEIRS NOW", 'PICKED!'], 'FUMBLE!': ['BUTTERFINGERS', 'BALL ON THE GROUND'], 'DROPPED!': ['HANDS.', 'IT HIT HIS HANDS'], 'INCOMPLETE': ['NOPE', 'NOT TODAY'], 'TACKLE FOR LOSS!': ['WRONG WAY', 'STUFFED'], 'JUKED HIM!': ['ANKLES', 'SEE YA'], 'TRUCKED HIM!': ['RUN HIM OVER', 'HE SAW HIM. DIDN\'T MATTER.'], 'MOSSED HIM!': ['GOT UP AND GOT IT', 'HIGH POINT'], 'HOUSE CALL!': ['GONE', 'NOBODY HOME'], 'NO GOOD': ['WIDE', 'DOINK-ADJACENT'] };
   function popup(box, p) {
     const el = document.createElement('div');
     el.className = 'pop ' + (p.good ? 'good' : p.bad ? 'bad' : '') + (p.flag ? ' flag' : '');
-    el.innerHTML = p.sub ? `${p.text}<small>${p.sub}</small>` : p.text;
+    let text = p.text;
+    if (ALT[text] && Math.random() < 0.28) text = ALT[text][Math.floor(Math.random() * ALT[text].length)];
+    el.innerHTML = p.sub ? `${text}<small>${p.sub}</small>` : text;
     box.appendChild(el);
     setTimeout(() => el.remove(), p.flag ? 2200 : 1500);
   }
@@ -400,5 +404,13 @@
     });
   }
 
-  window.PlayAnim = { play };
+  // Headless run of a play (no drawing, no rAF): used by tests to check that every play type resolves
+  function simulate(spec, maxT = 9) {
+    const W = makeWorld(spec); const sc = script(W); W.ball.carrier = W.qb;
+    const dt = 1 / 60; let n = 0;
+    while (!(sc.endAt && W.t >= sc.endAt) && W.t < maxT) { W.t += dt; step(W, sc, dt); n++; }
+    const bad = W.A.filter(a => !Number.isFinite(a.x) || !Number.isFinite(a.y) || a.x < -50 || a.x > 1250 || a.y < -50 || a.y > 583).map(a => a.id);
+    return { t: +W.t.toFixed(2), ended: !!(sc.endAt && W.t >= sc.endAt), pops: W.pops.map(p => p.text), ball: { x: Math.round(W.ball.x), y: Math.round(W.ball.y) }, carrier: W.ball.carrier ? W.ball.carrier.id : null, outOfBounds: bad };
+  }
+  window.PlayAnim = { play, simulate };
 })();
