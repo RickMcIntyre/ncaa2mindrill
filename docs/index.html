@@ -94,6 +94,8 @@ nav.tabs .saban-tab { border-color: #6b2a2a; }
 .pop { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(.6); font-family: var(--f-ui); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; font-size: clamp(26px, 6vw, 54px); color: var(--chalk); background: rgba(12, 20, 32, .82); border: 2px solid var(--chalk); border-radius: 10px; padding: 6px 22px; white-space: nowrap; pointer-events: none; animation: popin 1.5s cubic-bezier(.2, .9, .3, 1) forwards; text-shadow: 0 2px 10px rgba(0,0,0,.6); }
 .pop.good { color: #ffd166; border-color: #ffd166; }
 .pop.bad { color: #ff7b6b; border-color: #ff7b6b; }
+.pop.flag { color: #1b1203; background: #ffe14d; border-color: #ffe14d; display: grid; line-height: 1; }
+.pop small { display: block; font-size: .38em; letter-spacing: .14em; margin-top: 4px; }
 @keyframes popin { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.5) rotate(-4deg); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1.08) rotate(1deg); } 22% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -62%) scale(1); } }
 .skiphint { position: absolute; right: 10px; bottom: 8px; font-family: var(--f-ui); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.7); pointer-events: none; }
 .snapping { font-family: var(--f-ui); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 18px; display: flex; align-items: center; gap: 10px; }
@@ -133,6 +135,11 @@ nav.tabs .saban-tab { border-color: #6b2a2a; }
 .rt[aria-pressed="true"] { background: var(--amber); color: #1b1203; border-color: var(--amber); }
 .rt:disabled { opacity: .35; cursor: not-allowed; }
 .mods .gl { align-self: center; margin-right: 2px; }
+.look { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--bad); border-radius: 8px; padding: 6px 12px; }
+.look b { font-family: var(--f-ui); font-size: 17px; letter-spacing: .04em; text-transform: uppercase; }
+.look small { color: var(--muted); font-size: 13px; }
+.toggle.col { flex-direction: column; align-items: stretch; gap: 8px; }
+.toggle .row2 { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .mods .note { align-self: center; font-size: 12.5px; }
 .mods { display: flex; gap: 8px; flex-wrap: wrap; }
 .mod { font-family: var(--f-ui); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; border-radius: 999px; padding: 6px 14px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
@@ -184,6 +191,34 @@ details.opts summary { cursor: pointer; font-family: var(--f-ui); font-weight: 6
 .grid-emoji { text-align: center; font-size: 22px; letter-spacing: 2px; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .row > * { flex: 1 1 180px; }
+.finalscore { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-family: var(--f-ui); }
+.finalscore .fs { display: flex; align-items: center; gap: 10px; }
+.finalscore .fs.r { justify-content: flex-end; }
+.finalscore .chip { width: 8px; height: 34px; border-radius: 3px; display: inline-block; }
+.finalscore b { font-size: 22px; letter-spacing: .04em; }
+.finalscore em { font-style: normal; font-weight: 800; font-size: 40px; font-variant-numeric: tabular-nums; }
+.finalscore .fsmid { text-align: center; }
+.gradegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.gtile { border-radius: 8px; padding: 6px 8px; display: grid; gap: 1px; min-width: 0; color: #1b1203; }
+.gtile span { font-family: var(--f-ui); font-size: 11px; letter-spacing: .1em; opacity: .75; }
+.gtile b { font-family: var(--f-ui); font-size: 13px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gtile.g { background: var(--good); } .gtile.y { background: var(--warn); } .gtile.r { background: var(--bad); color: #fff; }
+.hist { display: flex; align-items: flex-end; gap: 3px; height: 44px; margin-top: 6px; }
+.hist i { flex: 1; background: var(--line); border-radius: 2px 2px 0 0; min-height: 2px; }
+.hist i.me { background: var(--amber); }
+.sharebox { display: grid; gap: 10px; }
+.sharebox canvas { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); display: block; }
+.sharebox a.cta { text-align: center; text-decoration: none; display: block; }
+.cmpsum { display: grid; gap: 4px; font-size: 14px; margin-block: 6px 10px; }
+.cmpgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.cmphead { font-family: var(--f-ui); letter-spacing: .12em; text-transform: uppercase; font-size: 12px; color: var(--muted); padding: 2px 4px; }
+.cmpgrid .cell { background: var(--night); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 2px; min-width: 0; font-size: 13px; }
+.cmpgrid .cell.empty { border-style: dashed; opacity: .4; }
+.cmpgrid .sit { font-family: var(--f-ui); font-size: 12px; letter-spacing: .06em; color: var(--muted); }
+.cmpgrid .call { font-family: var(--f-ui); font-weight: 700; font-size: 15px; }
+.cmpgrid .res { color: var(--chalk); opacity: .85; overflow-wrap: anywhere; }
+.cmpgrid .wpl { font-family: var(--f-ui); color: var(--muted); font-variant-numeric: tabular-nums; }
+.cmpgrid .wpl b { color: var(--amber); }
 .realdrive { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
 .realdrive ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 5px; font-size: 13.5px; }
 .realdrive li span { font-family: var(--f-ui); color: var(--amber); margin-right: 6px; }
@@ -263,8 +298,8 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
   <button class="cta ghost" id="statsClose">Close</button>
 </dialog>
 
-<script src="anim.js?v=2"></script>
-<script src="app.js?v=5"></script>
+<script src="anim.js?v=3"></script>
+<script src="app.js?v=7"></script>
 
 </body>
 </html>

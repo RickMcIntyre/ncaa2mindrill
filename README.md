@@ -34,4 +34,10 @@ Then open http://localhost:8765/. To deploy, upload the contents of `docs/` (ind
 - **Outcomes**: each call draws a real 2023–2025 snap from a pool keyed by call type (depth × side for passes, inside/outside for runs), field zone and down. The draw is tilted by both teams' season EPA ratings and the chosen player's season numbers.
 - **Win probability**: a logistic model fitted on all Q4 FBS plays, by score bucket, with time, field position, down, distance, timeouts and pregame Elo gap. Calibrated within about one point in every decile.
 - **Clock**: college rules. Stops on incompletions and out of bounds; restarts on the ready-for-play after a first down, except inside two minutes where it briefly stops.
-- **Coach comparison**: the same model evaluated at the end of the real drive.
+- **Coach comparison**: the same model evaluated at the end of the real drive, plus a snap-by-snap grid of your calls against the coach's.
+- **Defensive looks**: each snap the defense shows a look (base, loaded box, light box, blitz, prevent), sampled from the situation; it tilts every option and the animation aligns to it.
+- **Penalties, scrambles, strip sacks, kicker quality**: flag rate and types from late-game snaps (pre-snap flags wipe the play, live-ball flags bring it back), QB scrambles at the measured rate, 1 in 10 sacks is a strip, and each team-season's kicker is rated against the distance model.
+- **Tempo**: when the clock is running you choose hustle (≈5 s off), neutral (the measured median), or milk it (≈34 s), or burn a timeout.
+- **Percentile**: 300 synthetic play-callers (different sharpness, run/pass lean, timeout habits) replay the same drive through the engine; your finish is ranked against theirs.
+- **Coach resemblance**: your pass rate overall, on early downs and on passing downs is matched to the nearest real FBS head coach's 2023–25 tendencies.
+- **Share**: a 1200×630 card (canvas) with Web Share / X intent / copy / save.

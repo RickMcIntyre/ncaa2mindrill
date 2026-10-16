@@ -274,6 +274,22 @@ pools = {}
 CAP = 110
 
 
+AIR_RE = re.compile(r'caught at ([A-Za-z]+)\s?(\d+).*?to the ([A-Za-z]+)\s?(\d+)', re.I)
+
+
+def air_yards(text, gained):
+    """Air yards of a completion when the text says where it was caught; None otherwise."""
+    m = AIR_RE.search(text or '')
+    if not m:
+        return None
+    t1, c, t2, e = m.group(1).upper(), int(m.group(2)), m.group(3).upper(), int(m.group(4))
+    yac = abs(e - c) if t1 == t2 else (50 - c) + (50 - e)
+    if yac > abs(gained) + 15:
+        return None
+    air = gained - yac if gained >= 0 else gained
+    return int(max(-10, min(air, gained if gained > 0 else 0)))
+
+
 def add_pool(key, df, with_text=True):
     df = df.sample(min(len(df), CAP), random_state=11) if len(df) else df
     rows = []
@@ -285,6 +301,8 @@ def add_pool(key, df, with_text=True):
         if with_text:
             txt = re.sub(r'^\(\d+:\d+\)\s*', '', r.text)
             row.append(txt if len(txt) <= 200 else txt[:200].rsplit(' ', 1)[0] + '…')
+        if r.complete:
+            row.append(air_yards(r.text, int(round(r.yg))))
         rows.append(row)
     pools[key] = rows
     return len(rows)
@@ -329,6 +347,75 @@ rates = dict(
     int=round(float(pass_all[pass_all.is_passplay].is_int.mean()), 4),
     fumble=round(float(base[base.is_rushplay].fumble_lost.mean()), 4),
 )
+# how long a snap really takes off the clock late in the 4th, by what happened (time to the next snap)
+p['nextT'] = p.groupby('game_id').secs.shift(-1)
+p['el'] = p.secs - p.nextT
+late = p[(p.period == 4) & (p.secs <= 300) & p.el.between(0, 45)]
+lk = late[late.is_passplay & ~late.complete & ~late.is_int]
+rates['el_inc'] = float(lk.el.median())
+rates['el_comp_in'] = float(late[late.complete & ~late.oob & ~late.td].el.median())
+rates['el_oob'] = float(late[late.oob & ~late.td].el.median())
+rates['el_rush'] = float(late[late.is_rushplay & ~late.oob & ~late.td & ~late.fumble_lost].el.median())
+rates['el_sack'] = float(late[late.is_sack].el.median())
+rates['el_first'] = float(late[(late.is_rushplay | late.complete) & ~late.oob & late.text.str.contains('1ST DOWN|1st down', case=False)].el.median())
+# penalties: share of late-game snaps that draw an accepted flag, and what the flags are
+lateall = p[(p.period == 4) & (p.secs <= 150)]
+scrim = lateall[lateall.is_passplay | lateall.is_rushplay | lateall.is_sack]
+flags = lateall[(lateall.play_type == 'Penalty') & (lateall.penalty_declined != True) & lateall.yds_penalty.notna() & (lateall.yds_penalty != 0)]
+rates['pen'] = round(len(flags) / max(1, len(scrim) + len(flags)), 4)
+allflags = p[(p.play_type == 'Penalty') & (p.penalty_declined != True) & p.yds_penalty.notna() & (p.yds_penalty != 0)]
+PRE = {'False Start', 'Delay of Game', 'Offside', 'Illegal Formation', 'Illegal Shift', 'Illegal Motion', 'Encroachment', 'Illegal Substitution', 'Too Many Men on the Field'}
+OFF_FOULS = ('false start', 'delay of game', 'intentional grounding', 'illegal formation', 'illegal shift', 'illegal motion', 'ineligible', 'chop block', 'illegal forward pass', 'illegal touching', 'offensive')
+DEF_FOULS = ('offside', 'encroachment', 'pass interference', 'roughing', 'targeting', 'neutral zone', 'defensive', 'illegal contact', 'horse collar')
+ABBR = {n: teams[i]['abbr'] for n, i in team_name_to_id.items()}
+
+
+def pen_side(r):
+    """Which side the flag is on: the text names the penalized team; the foul type settles the rest."""
+    t = str(r.text); tl = t.lower(); d = str(r.penalty_detail).lower()
+    for team, side in ((r.pos_team, 'off'), (r.def_pos_team, 'def')):
+        if not isinstance(team, str):
+            continue
+        first = team.split(' ')[0].lower()
+        if re.search(r'^\s*(\(\d+:\d+\)\s*)?' + re.escape(team.lower()) + r' penalty', tl) or ('penalty ' + ABBR.get(team, '~~').lower() + ' ') in tl or ('penalty ' + first + ' ') in tl:
+            return side
+    if any(k in d for k in OFF_FOULS):
+        return 'off'
+    if any(k in d for k in DEF_FOULS):
+        return 'def'
+    return 'off' if r.yds_penalty < 0 else 'def'
+
+
+def pen_rows(df):
+    out = []
+    for r in df.sample(min(len(df), 200), random_state=5).itertuples(index=False):
+        side = pen_side(r)
+        yds = abs(int(r.yds_penalty))
+        if yds == 0 or yds > 50:
+            continue
+        out.append([yds if side == 'def' else -yds, str(r.penalty_detail), 1 if (side == 'def' and r.penalty_1st_conv) else 0, 1 if 'grounding' in str(r.penalty_detail).lower() else 0])
+    return out
+ispass = allflags.text.str.contains('pass', case=False)
+pools['pen_pre'] = pen_rows(allflags[allflags.penalty_detail.isin(PRE)])
+pools['pen_pass'] = pen_rows(allflags[~allflags.penalty_detail.isin(PRE) & ispass])
+pools['pen_run'] = pen_rows(allflags[~allflags.penalty_detail.isin(PRE) & ~ispass])
+rates['pen_pre_share'] = round(float(allflags.penalty_detail.isin(PRE).mean()), 3)
+# extra points, two-point tries, onside kicks
+tdt = p[p.td].text.str.lower()
+xp_try = tdt.str.contains(r'kick\)|kick failed|kick blocked|kick missed|extra point', regex=True)
+xp_good = tdt.str.contains(r'[a-z\'\.\- ]+ kick\)', regex=True) & ~tdt.str.contains('failed|blocked|missed|no good')
+rates['xp'] = round(float(xp_good[xp_try].mean()), 3)
+two_try = tdt.str.contains('two-point|two point')
+two_good = two_try & ~tdt.str.contains('failed|no good|unsuccessful')
+rates['two'] = round(float(two_good[two_try].mean()), 3)
+ons = p[p.play_type.str.startswith('Kickoff') & p.text.str.contains('onside|on-side', case=False)]
+rec_txt = ons.text.str.contains('recovered by', case=False)
+kick_team_rec = ons[rec_txt].apply(lambda r: str(r.pos_team).split()[0].lower() in str(r.text).lower(), axis=1) if len(ons[rec_txt]) else pd.Series(dtype=bool)
+rates['onside'] = round(float(kick_team_rec.mean()) * float(rec_txt.mean()), 3) if len(ons) else 0.1
+rates['onside'] = float(min(max(rates['onside'], 0.06), 0.18))
+# quarterback scrambles: QB rushes that weren't designed, as a share of dropbacks (ESPN text rarely says 'scramble'; use QB rushes on passing downs)
+qbr = sc[(sc.position_rush == 'QB') & ~sc.kneel]
+rates['scramble'] = round(float(len(qbr[qbr.dg == 'L']) / max(1, len(sc[(sc.kind == 'pass') & (sc.dg == 'L')]) + len(qbr[qbr.dg == 'L']))) * 0.5, 3)
 print('rates', rates)
 
 # ---------- field goal + conversion models ----------
@@ -352,6 +439,16 @@ def logit_fit(X, y, l2=1e-3, iters=40):
 
 wfg = logit_fit(X, yv, l2=0)
 print('fg', wfg, [round(1 / (1 + math.exp(-(wfg[0] + wfg[1] * d))), 2) for d in (30, 40, 50, 55)])
+
+# ---------- kicker ratings (per team-season, residual vs the distance model) ----------
+fgk = fg.copy()
+fgk['pred'] = 1 / (1 + np.exp(-(wfg[0] + wfg[1] * (fgk.yards_to_goal + 17))))
+fgk['made'] = (fgk.play_type == 'Field Goal Good').astype(float)
+fgk['tid'] = fgk.pos_team.map(team_name_to_id)
+kres = fgk.groupby(['year', 'tid']).apply(lambda d: pd.Series({'res': (d.made - d.pred).mean(), 'n': len(d)}))
+KICK = {k: round(float(v.res * v.n / (v.n + 12)), 3) for k, v in kres.iterrows()}
+print('kickers', len(KICK), 'best', sorted(KICK.values())[-3:], 'worst', sorted(KICK.values())[:3])
+
 
 # ---------- win probability model ----------
 fin = gmeta.join(sched[['home_score', 'away_score']], how='left')
@@ -490,7 +587,7 @@ for r in cand.itertuples(index=False):
         down=int(r.down), dist=int(r.distance),
         to=timeouts_left(gid, r.pos_team, r.game_play_number), dto=timeouts_left(gid, r.def_pos_team, r.game_play_number),
         elo=round(float(elo), 1) if not pd.isna(elo) else 0,
-        orat=rating(year, off_id), drat=rating(year, def_id),
+        orat=rating(year, off_id), drat=rating(year, def_id), kick=KICK.get((year, off_id), 0.0),
         lineup=lineup(year, off_id, gid),
         result=str(r.drive_result), final=[off_final, def_final], won=off_final > def_final, real=real,
     ))
@@ -511,6 +608,21 @@ for r in cand.itertuples(index=False):
         cwp = 1.0 if off_final > def_final else 0.0 if off_final < def_final else 0.5
     scen[-1]['cwp'] = round(float(cwp), 3)
 print('scenarios', len(scen))
+
+# coach tendencies (2023-25 combined): pass rate overall, on early downs, on passing downs, when trailing, explosive-pass rate
+tend = {}
+for y in YEARS:
+    c = pd.read_parquet(RAW + f'ct_{y}.parquet', columns=['season', 'pos_team_id', 'pos_team', 'coach', 'role', 'plays', 'passes', 'plays_early_down', 'passes_early_down', 'plays_passing_down', 'passes_passing_down', 'plays_trailing', 'passes_trailing', 'explosives_pass', 'plays_one_score', 'passes_one_score'])
+    c = c[(c.role == 'HC') & c.pos_team_id.isin(teams.keys())]
+    for r in c.itertuples(index=False):
+        t = tend.setdefault(r.coach, dict(school=teams[int(r.pos_team_id)]['school'], plays=0, passes=0, pe=0, ppe=0, pp=0, ppp=0, pt=0, ppt=0, ex=0))
+        t['school'] = teams[int(r.pos_team_id)]['school']  # latest school
+        for a, b in (('plays', 'plays'), ('passes', 'passes'), ('pe', 'plays_early_down'), ('ppe', 'passes_early_down'), ('pp', 'plays_passing_down'), ('ppp', 'passes_passing_down'), ('pt', 'plays_trailing'), ('ppt', 'passes_trailing'), ('ex', 'explosives_pass')):
+            v = getattr(r, b)
+            t[a] += int(v) if not pd.isna(v) else 0
+TEND = {k: [v['school'], round(v['passes'] / v['plays'], 3), round(v['ppe'] / max(1, v['pe']), 3), round(v['ppp'] / max(1, v['pp']), 3), round(v['ppt'] / max(1, v['pt']), 3), round(v['ex'] / max(1, v['passes']), 3), v['plays']]
+        for k, v in tend.items() if v['plays'] >= 700}
+print('tendencies', len(TEND))
 
 # coach table (all FBS head coaches in window)
 coaches = {}
@@ -535,7 +647,7 @@ for i, s in enumerate(scen):
 
 data = dict(
     built='2026-10-15', years=list(YEARS), launch='2026-10-15',
-    teams=teams, games=games, coaches=coaches, scen=scen, pools=pools, rates=rates,
+    teams=teams, games=games, coaches=coaches, tend=TEND, scen=scen, pools=pools, rates=rates,
     fg=[round(float(w), 5) for w in wfg], wp=dict(cats=CATS, w=[round(float(w), 5) for w in ww]),
 )
 with open(OUT, 'w', encoding='utf-8') as f:
