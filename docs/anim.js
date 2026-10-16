@@ -149,8 +149,17 @@
     return sc;
   }
 
+  // a long carry still has to fit the clip: speed the carrier up so his path takes at most ~3.2 s
+  function pace(a) {
+    if (!a.plan) return;
+    let len = 0, px = a.x, py = a.y;
+    for (const p of a.plan.pts.slice(a.plan.i)) { len += Math.hypot(p.x - px, p.y - py); px = p.x; py = p.y; }
+    const base = TOP[a.pos] || 85;
+    a.speedMul = clamp(len / (3.2 * base), 1, 1.9);
+  }
   // once someone has the ball, pick the tackler and set his effort so he meets the carrier at the real spot
   function assignTackler(W, sc, carrier) {
+    pace(carrier);
     const dest = carrier.plan && carrier.plan.pts[carrier.plan.pts.length - 1] || carrier;
     const eta = Math.max(0.3, dist(carrier, dest) / (carrier.top * 0.95));
     let best = null, bestNeed = Infinity;
