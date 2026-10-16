@@ -96,6 +96,14 @@
     W.cb = cb.map(([dx, y], i) => add('CB' + i, 'CB', los + dx, y, 'def', ''));
     W.s = s.map(([dx, y], i) => add('S' + i, 'S', los + dx, y, 'def', ''));
     for (const d of [...W.dl, ...W.lb, W.nb, ...W.cb, ...W.s]) { d.x0 = d.x; d.y0 = d.y; }
+    // real defenders by role, so the numbers on the field match the names in the narration
+    const pool = (spec.dlineup || []).slice();
+    const take = role => { const i = pool.findIndex(x => x.role === role); return i >= 0 ? pool.splice(i, 1)[0] : null; };
+    const any = () => pool.length ? pool.shift() : null;
+    W.dl.forEach(d => { const x = take('DL') || take('LB') || any(); if (x) d.num = x.num; });
+    W.lb.forEach(d => { const x = take('LB') || any(); if (x) d.num = x.num; });
+    [...W.cb, W.nb, ...W.s].forEach(d => { const x = take('DB') || any(); if (x) d.num = x.num; });
+    W.whoNum = spec.whoNum || null;
     // coverage: corners on the outside receivers, nickel on the slot, a backer or safety on the tight end
     const byY = [...W.recs].filter(a => a.pos !== 'RB').sort((a, b) => a.y - b.y);
     W.cover = new Map();
@@ -182,7 +190,14 @@
       const need = dist(d, dest) / eta / (TOP[d.pos] || 85);
       if (need < bestNeed) { bestNeed = need; best = d; }
     }
-    if (best) { best.tackler = true; best.speedMul = clamp(bestNeed * 1.05, 0.55, 1.3); sc.tackler = best; }
+    if (best) { best.tackler = true; best.speedMul = clamp(bestNeed * 1.05, 0.55, 1.3); sc.tackler = best; if (W.whoNum) swapNum(W, best, W.whoNum); }
+  }
+  // the defender credited in the narration takes the dot that makes the play
+  function swapNum(W, actor, num) {
+    if (!num || actor.num === num) return;
+    const other = W.A.find(a => a.team === 'def' && a.num === num);
+    if (other) other.num = actor.num;
+    actor.num = num;
   }
 
   function step(W, sc, dt) {
@@ -217,7 +232,7 @@
         if (sc.pressureAt && t > sc.pressureAt + 0.8) { drop.x += 20; drop.y += 25; } // climbs the pocket under pressure
         q.seek(drop.x, drop.y, dt, 0.85);
       }
-      if ((sc.sackAt || sc.pressureAt) && t >= (sc.sackAt ? sc.sackAt - 0.9 : sc.pressureAt) && !sc.freeRusher) sc.freeRusher = W.look === 'blitz' ? W.lb[0] : W.dl[Math.random() < 0.5 ? 0 : 3];
+      if ((sc.sackAt || sc.pressureAt) && t >= (sc.sackAt ? sc.sackAt - 0.9 : sc.pressureAt) && !sc.freeRusher) { sc.freeRusher = W.look === 'blitz' ? W.lb[0] : W.dl[Math.random() < 0.5 ? 0 : 3]; if (sc.sackAt && W.whoNum) swapNum(W, sc.freeRusher, W.whoNum); }
       if (sc.sackAt && t >= sc.sackAt && !q.down) {
         q.down = true; q.x = X(S.finalYtg); q.vx = q.vy = 0; b.carrier = S.strip ? null : q;
         if (sc.freeRusher) { sc.freeRusher.down = true; sc.freeRusher.x = q.x + 10; sc.freeRusher.y = q.y + 6; }
@@ -244,8 +259,8 @@
         const d = dist(q, lead); const flight = clamp(d / 440 + 0.25, 0.35, 1.5);
         b.flying = { from: { x: q.x, y: q.y }, to: lead, t0: t, dur: flight, h: clamp(d / 6, 10, 70) * (S.depth === 'deep' || S.hail ? 1.2 : 0.7) };
         b.carrier = null;
-        if (S.int) { const pick = [...W.cb, ...W.s, W.nb, ...W.lb].reduce((best, x) => dist(x, lead) < dist(best, lead) ? x : best, W.s[0]); sc.picker = pick; pick.intercept = lead; }
-        else if (S.pbu || (!S.complete && !S.dropped && Math.random() < 0.5)) { const db = [...W.cb, ...W.s, W.nb].reduce((best, x) => dist(x, lead) < dist(best, lead) ? x : best, W.cb[0]); db.intercept = lead; db.breakup = true; sc.breaker = db; }
+        if (S.int) { const pick = [...W.cb, ...W.s, W.nb, ...W.lb].reduce((best, x) => dist(x, lead) < dist(best, lead) ? x : best, W.s[0]); sc.picker = pick; pick.intercept = lead; if (W.whoNum) swapNum(W, pick, W.whoNum); }
+        else if (S.pbu || (!S.complete && !S.dropped && Math.random() < 0.5)) { const db = [...W.cb, ...W.s, W.nb].reduce((best, x) => dist(x, lead) < dist(best, lead) ? x : best, W.cb[0]); db.intercept = lead; db.breakup = true; sc.breaker = db; if (S.pbu && W.whoNum) swapNum(W, db, W.whoNum); }
       }
     }
     // --- ball in the air ---
@@ -373,8 +388,8 @@
       const isOff = a.team === 'off';
       const r = isOff && a.pos !== 'OL' ? 15 : isOff ? 13 : 11;
       e.innerHTML = `<circle r="${r}" fill="${isOff ? offColor : defAlt}" stroke="${isOff ? offAlt : defColor}" stroke-width="${isOff ? 3 : 4}" opacity="${isOff ? 1 : .92}"/>` +
-        (a.num ? `<text y="1" fill="${offAlt}" font-family="Saira Condensed, sans-serif" font-weight="700" font-size="16" text-anchor="middle" dominant-baseline="middle">${a.num}</text>` : '');
-      g.appendChild(e); a.el = e;
+        `<text y="1" fill="${isOff ? offAlt : defColor}" font-family="Saira Condensed, sans-serif" font-weight="700" font-size="${isOff ? 16 : 11}" text-anchor="middle" dominant-baseline="middle">${a.num || ''}</text>`;
+      g.appendChild(e); a.el = e; a.numEl = e.querySelector('text');
     }
     const ball = document.createElementNS(ns, 'g'); ball.setAttribute('id', 'liveball');
     ball.innerHTML = `<ellipse id="shadow" rx="12" ry="5" fill="#000" opacity=".25"/><g id="bb"><ellipse rx="13" ry="8" fill="#7a3f1d" stroke="#fff" stroke-width="2"/><line x1="-4" x2="4" y1="0" y2="0" stroke="#fff" stroke-width="2"/></g>`;
@@ -388,7 +403,7 @@
     W.g = g;
   }
   function draw(W) {
-    for (const a of W.A) a.el.setAttribute('transform', `translate(${a.x.toFixed(1)} ${a.y.toFixed(1)})${a.down ? ' rotate(75)' : ''}`);
+    for (const a of W.A) { a.el.setAttribute('transform', `translate(${a.x.toFixed(1)} ${a.y.toFixed(1)})${a.down ? ' rotate(75)' : ''}`); if (a.numEl && a.numEl.textContent !== (a.num || '')) a.numEl.textContent = a.num || ''; }
     const b = W.ball, sc = 1 + b.h / 90;
     W.ballEl.setAttribute('transform', `translate(${b.x.toFixed(1)} ${b.y.toFixed(1)})`);
     W.ballEl.querySelector('#bb').setAttribute('transform', `translate(0 ${-b.h * 1.4}) scale(${sc})`);

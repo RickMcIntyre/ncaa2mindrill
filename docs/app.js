@@ -410,6 +410,26 @@ const PCT_LINES = [
   [0, 'The simulated play-callers send their regards. They are not real, and they know it.'],
 ];
 
+// ---------- defenders ----------
+// Who makes the play on defense, drawn from the real tackle/PBU/sack/interception counts in the play-by-play.
+function pickDefender(sc, kind) {
+  const d = sc.dlineup || []; if (!d.length) return null;
+  const w = d.map(x => kind === 'sack' ? (x.sk * 3 + (x.role === 'DL' ? 1 : 0)) : kind === 'int' ? (x.int * 3 + x.pbu + (x.role === 'DB' ? 1 : 0)) : kind === 'pbu' ? (x.pbu * 3 + x.int + (x.role === 'DB' ? 1 : 0)) : kind === 'pass' ? (x.tk * (x.role === 'DB' ? 1.4 : x.role === 'LB' ? 1 : .3)) : (x.tk * (x.role === 'DL' ? 1.2 : x.role === 'LB' ? 1.3 : .6)));
+  const tot = w.reduce((a, b) => a + b, 0); if (tot <= 0) return null;
+  let u = rand() * tot; for (let i = 0; i < d.length; i++) { u -= w[i]; if (u <= 0) return d[i]; }
+  return d[d.length - 1];
+}
+const defName = x => x ? `#${x.num} ${x.name.replace(/^([A-Z])\.\s?(?=[A-Z])/, '$1. ')}` : '';
+// Defensive slots for the field (4 DL, 2 LB, nickel, 2 CB, 2 S) filled by role from the real roster
+function defenseSlots(sc) {
+  const d = (sc.dlineup || []).slice(); const take = role => { const i = d.findIndex(x => x.role === role); return i >= 0 ? d.splice(i, 1)[0] : null; };
+  const any = () => d.length ? d.shift() : null;
+  const dl = [take('DL'), take('DL'), take('DL'), take('DL')].map(x => x || take('LB') || any());
+  const lb = [take('LB'), take('LB')].map(x => x || any());
+  const dbs = [take('DB'), take('DB'), take('DB'), take('DB'), take('DB')].map(x => x || any());
+  return { dl, lb, nb: dbs[2], cb: [dbs[0], dbs[1]], s: [dbs[3], dbs[4]] };
+}
+
 // ---------- helpers ----------
 const short = n => { const p = String(n).split(' '); return p.length > 1 ? `${p[0][0]}. ${p.slice(1).filter(x => !/^(Jr\.?|Sr\.?|II|III|IV)$/.test(x)).join(' ') || p[1]}` : n; };
 const T_ = id => D.teams[id];
@@ -560,9 +580,9 @@ function fieldSVG(st, sc, anim) {
         s += `<g transform="translate(${a.x} ${a.y})"><circle r="16" fill="none" stroke="#ffd166" stroke-width="3"/><circle r="4" fill="#ffd166"/><line x1="-24" x2="-18" y1="0" y2="0" stroke="#ffd166" stroke-width="3"/><line x1="18" x2="24" y1="0" y2="0" stroke="#ffd166" stroke-width="3"/><line y1="-24" y2="-18" x1="0" x2="0" stroke="#ffd166" stroke-width="3"/><line y1="18" y2="24" x1="0" x2="0" stroke="#ffd166" stroke-width="3"/></g>`;
       }
       s += dot(los - 70, 266, L.qb.num, col, alt);
-      const dc = def.color, da = def.alt;
-      [[18, 236], [18, 266], [18, 296], [18, 206], [60, 230], [60, 300], [55, 150], [40, 60], [40, 470], [150, 190], [150, 350]]
-        .forEach(([dx, y]) => { s += `<circle cx="${los + dx}" cy="${y}" r="11" fill="${da}" stroke="${dc}" stroke-width="4" opacity=".9"/>`; });
+      const dc = def.color, da = def.alt, ds = defenseSlots(sc);
+      const dslots = [[18, 236, ds.dl[0]], [18, 266, ds.dl[1]], [18, 296, ds.dl[2]], [18, 206, ds.dl[3]], [60, 230, ds.lb[0]], [60, 300, ds.lb[1]], [55, 150, ds.nb], [40, 60, ds.cb[0]], [40, 470, ds.cb[1]], [150, 190, ds.s[0]], [150, 350, ds.s[1]]];
+      dslots.forEach(([dx, y, pl]) => { s += `<g><circle cx="${los + dx}" cy="${y}" r="11" fill="${da}" stroke="${dc}" stroke-width="4" opacity=".9"/>${pl ? `<text x="${los + dx}" y="${y + 1}" fill="${dc}" font-family="Saira Condensed, sans-serif" font-weight="700" font-size="11" text-anchor="middle" dominant-baseline="middle">${esc(pl.num)}</text>` : ''}</g>`; });
     }
     s += '</g>';
   }
@@ -617,7 +637,9 @@ function bug(st, sc) {
 function lineupHTML(sc) {
   const off = T_(sc.off), L = sc.lineup;
   const chip = (num, name, pos) => `<span class="pl"><span class="n" style="background:${off.color};color:${off.alt}">${esc(num || '–')}</span>${esc(short(name))} <span class="ps">${pos}</span></span>`;
-  return `<div class="lineup">${chip(L.qb.num, L.qb.name, 'QB')}${chip(L.rb.num, L.rb.name, 'RB')}${L.rec.filter(r => r.pos !== 'RB').map(r => chip(r.num, r.name, r.pos)).join('')}</div>`;
+  const def = T_(sc.dfn), dl = (sc.dlineup || []).slice(0, 4);
+  const dchip = x => `<span class="pl" title="${x.tk} tackles${x.sk ? ', ' + x.sk + ' sacks' : ''}${x.pbu ? ', ' + x.pbu + ' PBU' : ''}${x.int ? ', ' + x.int + ' INT' : ''}"><span class="n" style="background:${def.alt};color:${def.color};border:2px solid ${def.color}">${esc(x.num)}</span>${esc(x.name)} <span class="ps">${x.role}</span></span>`;
+  return `<div class="lineup">${chip(L.qb.num, L.qb.name, 'QB')}${chip(L.rb.num, L.rb.name, 'RB')}${L.rec.filter(r => r.pos !== 'RB').map(r => chip(r.num, r.name, r.pos)).join('')}${dl.length ? `<span class="gl" style="align-self:center">vs</span>${dl.map(dchip).join('')}` : ''}</div>`;
 }
 
 // ---------- screens ----------
@@ -895,7 +917,14 @@ function runPlay(id, tgt, mods = {}) {
   G.prevYtg = st.ytg;
   if (mods.route) st = { ...st, T: Math.max(0, st.T - ROUTES[mods.route].dur) };
   const { n, r } = apply(st, id, o);
-  const text = narrate(id, o, r, tgt, sc, mods);
+  // the defender who made the play, by what happened
+  const isPassPlay = (id.startsWith('p_') || id === 'hail') && !o.scramble;
+  const who = o.flag ? null : o.strip || (o.f & 16) ? pickDefender(sc, 'sack') : o.int ? pickDefender(sc, 'int') : o.fumble ? pickDefender(sc, 'run')
+    : (r.incomplete && !o.spike) ? ((o.src && o.src[4] || '').toLowerCase().includes('broken up') ? pickDefender(sc, 'pbu') : null)
+    : (!r.td && !r.oob && !o.fg && !o.spike && !o.kneel && !o.punt) ? pickDefender(sc, isPassPlay ? 'pass' : 'run') : null;
+  mods.who = who;
+  let text = narrate(id, o, r, tgt, sc, mods);
+  if (who) text += o.strip || (o.f & 16) ? ` ${defName(who)} got home.` : o.int ? ` ${defName(who)} with the pick.` : o.fumble ? ` ${defName(who)} forced it.` : r.incomplete ? ` ${defName(who)} broke it up.` : ` Tackle by ${defName(who)}.`;
   const sit = `${downText(st)} ${spot(st.ytg, sc)} ${clock(st.T)}`;
   G.log.push({ sit, text });
   const ev = expected(st, id, tgt, mods);
@@ -945,12 +974,15 @@ function runPlay(id, tgt, mods = {}) {
     runType: CALLS[id].run ? id : null, side: mods.side === 'L' ? -1 : 1, aim: mods.aim || null, lane: mods.lane || CALLS[id].lane || null,
     dropped: !(shown.f & 1) && !shown.int && srcText.includes('drop'), pbu: srcText.includes('broken up'), contested: srcText.includes('contested'),
     hurried: srcText.includes('hurried') || srcText.includes('pressure'),
+    dlineup: sc.dlineup || [], whoNum: who ? who.num : null,
   };
   G.busy = true; G.animating = true; G.st = st; renderPlay();
   const box = $('#field');
   spec.clock = { from: st.T, to: n.T, el: $('.bug .clock .t') }; // the game clock ticks while the play runs
+  if (window.Sound) Sound.play(spec.kind === 'flag' ? 'flag' : 'snap');
   const run = spec.kind === 'punt' ? Promise.resolve() : PlayAnim.play(box, spec);
   run.then(() => {
+    if (window.Sound) Sound.play(o.flag ? 'flag' : r.td || (o.fg && o.made) ? 'score' : (o.f & 8) ? 'turnover' : (o.f & 16) || (r.yards <= -2) ? 'thud' : (r.yards >= 15) ? 'crowd' : r.first ? 'first' : (o.fg && !o.made) ? 'thud' : null);
     G.animating = false; G.busy = false; G.st = n; G.last = newLast;
     if (r.end) { renderPlay(); G.busy = true; setTimeout(() => { G.busy = false; finish(r.end, n); }, 900); }
     else renderPlay();
@@ -1002,6 +1034,22 @@ function conclude(end, n, msg) {
   else { store.practice[G.sc.id] = { wp, coachWp: G.sc.cwp }; }
   saveStore();
   renderFinal();
+  submitResult();
+}
+// ---------- real-player leaderboard (needs the worker's D1 table; silently skipped until it exists) ----------
+function playerToken() { let t = ''; try { t = localStorage.getItem('cfb2md:token') || ''; if (!t) { t = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12); localStorage.setItem('cfb2md:token', t); } } catch { t = 'anon' + Math.random().toString(36).slice(2, 10); } return t; }
+async function submitResult() {
+  if (!(G.mode === 'daily' || isHardMode(G.mode)) || !G.no || UNLOCK_API.includes('REPLACE_ME')) return;
+  try {
+    const r = await unlockApi('/lb/submit', { day: G.no, mode: G.mode, wp: G.done.wp.toFixed(4), token: playerToken() });
+    if (r && r.ok && r.n) showLeaderboard(r);
+  } catch { /* leaderboard unavailable */ }
+}
+function showLeaderboard(r) {
+  const el = $('#lbCard'); if (!el) return;
+  const d = G.done, p = Math.round(r.below / r.n * 100);
+  el.innerHTML = `<div class="who">Vs real players today</div><div class="big">${r.n < 5 ? `${r.n}<small>played so far</small>` : `${p}%<small>beaten</small>`}</div><div class="end">${r.n < 5 ? 'Not enough results yet to rank you. Come back tonight.' : `Your ${pct(d.wp)} beat ${r.below} of ${r.n} people who played this drive today${r.median != null ? ` (median ${pct(r.median)})` : ''}. ${r.wins} finished at 50% or better.`}</div>${r.bins ? `<div class="hist">${(() => { const mx = Math.max(1, ...r.bins); return r.bins.map((b, i) => `<i style="height:${Math.max(2, b / mx * 100)}%" class="${Math.min(9, Math.floor(d.wp * 10)) === i ? 'me' : ''}"></i>`).join(''); })()}</div>` : ''}`;
+  el.hidden = false;
 }
 
 // ---------- simulated play-callers ----------
@@ -1180,6 +1228,7 @@ function renderFinal() {
       <div class="${you ? 'winner' : ''}"><div class="who">You</div><div class="big">${pct(d.wp)}<small>win chance</small></div><div class="end">${esc(d.desc)}</div><div class="note">Score ${off.abbr} ${d.os}, ${def.abbr} ${d.ds} · ${d.snaps} snaps</div></div>
       <div class="${you ? '' : 'winner'}"><div class="who">${esc(sc.coach)}</div><div class="big">${pct(sc.cwp)}<small>win chance</small></div><div class="end">${esc(resultWord(sc))}. ${sc.won ? 'Won' : 'Lost'} ${sc.final[0]}–${sc.final[1]}.</div><div class="note">Win chance at the end of the real drive, same model as yours.</div></div>
     </div>
+    <div id="lbCard" class="card lb" hidden></div>
     <div class="vs">
       <div id="pctCard"><div class="who">Vs simulated play-callers</div><div class="big" id="pctBig">…</div><div class="end" id="pctText">Simulating 300 college play-callers on this exact drive…</div><div class="hist" id="pctHist"></div></div>
       <div>${res ? `<div class="who">You call it like</div><div class="big" style="font-size:30px;line-height:1.1">${esc(res.best.coach)}</div><div class="end">${esc(res.best.school)} · ${pct(res.best.pass)} pass overall, ${pct(res.best.early)} on early downs, ${pct(res.best.pd)} on passing downs</div><div class="note">You: ${pct(res.me.pass)} pass, ${pct(res.me.early)} early downs, ${pct(res.me.pd)} passing downs, ${pct(res.me.deep)} deep shots (${res.n} calls). Next closest: ${esc(res.next.map(c => c.coach).join(', '))}. ${res.n < 6 ? 'Small sample. Coaches get a season; you got a drive.' : res.me.pass >= 0.8 ? 'Your tendencies, his résumé. You throw a lot.' : res.me.pass <= 0.35 ? 'Your tendencies, his résumé. You run a lot, on purpose, late.' : 'Your tendencies, his résumé.'}</div>` : '<div class="who">You call it like</div><div class="note">Call a few plays to get a match.</div>'}</div>
@@ -1205,6 +1254,7 @@ function renderFinal() {
     <div class="row"><button class="cta ghost" id="more">Play another drive</button></div>
   </section>`;
   drawShareCard($('#shareCanvas'));
+  if (G.done && (G.mode === 'daily' || isHardMode(G.mode)) && G.no && !UNLOCK_API.includes('REPLACE_ME')) unlockApi('/lb/stats', { day: G.no, mode: G.mode, wp: G.done.wp.toFixed(4) }).then(r => { if (r && r.ok && r.n) showLeaderboard(r); }).catch(() => {});
   const cached = G.pctl;
   const showPct = wps => {
     const below = wps.filter(w => w < d.wp - 1e-9).length, tie = wps.filter(w => Math.abs(w - d.wp) <= 1e-9).length;
@@ -1328,6 +1378,8 @@ $('#tabCoaches').onclick = () => setTab('coaches');
 $('#helpBtn').onclick = () => $('#helpDlg').showModal();
 $('#helpClose').onclick = () => $('#helpDlg').close();
 $('#statsBtn').onclick = showStats;
+const sndBtn = $('#soundBtn');
+if (sndBtn) { const paint = () => { sndBtn.textContent = window.Sound && Sound.on ? '🔊' : '🔇'; sndBtn.setAttribute('aria-pressed', String(!!(window.Sound && Sound.on))); }; paint(); sndBtn.onclick = () => { if (!window.Sound) return; Sound.set(!Sound.on); paint(); if (Sound.on) Sound.play('whistle'); }; }
 $('#statsClose').onclick = () => $('#statsDlg').close();
 
 fetch('data.json').then(r => r.json()).then(d => {

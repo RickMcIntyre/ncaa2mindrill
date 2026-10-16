@@ -7,3 +7,11 @@ ALLOWED_ORIGIN = "https://ncaa2mindrill.com,https://www.ncaa2mindrill.com"
 PRICE_MIN = "99"
 
 # Secrets are set with:  npx wrangler secret put STRIPE_SECRET   and   npx wrangler secret put UNLOCK_SECRET
+
+# Daily leaderboard (optional). Create the database once, paste its id below, then create the table:
+#   npx wrangler d1 create ncaa2mindrill
+#   npx wrangler d1 execute ncaa2mindrill --remote --command "CREATE TABLE IF NOT EXISTS results (day INTEGER, mode TEXT, wp REAL, token TEXT, ts INTEGER, UNIQUE(day, mode, token)); CREATE INDEX IF NOT EXISTS results_day ON results(day, mode);"
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "ncaa2mindrill"
+# database_id = "PASTE-THE-ID-HERE"

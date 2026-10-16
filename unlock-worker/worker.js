@@ -33,6 +33,16 @@ async function stripe(env, path) {
 }
 const paid = (s, env) => s && s.payment_status === 'paid' && (s.amount_total || 0) >= Number(env.PRICE_MIN || 99);
 
+// leaderboard numbers for one day and mode: how many played, how many finished below `wp`, the median, a 10-bucket histogram
+async function lbStats(env, day, mode, wp) {
+  const tot = await env.DB.prepare('SELECT COUNT(*) AS n, SUM(CASE WHEN wp < ?3 THEN 1 ELSE 0 END) AS below, SUM(CASE WHEN wp >= 0.5 THEN 1 ELSE 0 END) AS wins FROM results WHERE day = ?1 AND mode = ?2').bind(day, mode, wp).first();
+  const hist = await env.DB.prepare('SELECT CAST(MIN(wp * 10, 9) AS INTEGER) AS b, COUNT(*) AS c FROM results WHERE day = ?1 AND mode = ?2 GROUP BY b').bind(day, mode).all();
+  const n = tot && tot.n || 0;
+  const med = n ? await env.DB.prepare('SELECT wp FROM results WHERE day = ?1 AND mode = ?2 ORDER BY wp LIMIT 1 OFFSET ?3').bind(day, mode, Math.floor(n / 2)).first() : null;
+  const bins = new Array(10).fill(0); for (const r of (hist && hist.results) || []) bins[r.b] = r.c;
+  return { ok: true, n, below: tot && tot.below || 0, wins: tot && tot.wins || 0, median: med ? med.wp : null, bins };
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -61,6 +71,19 @@ export default {
         const hit = (found.data || []).find(s => paid(s, env));
         if (hit) return json({ ok: true, code: await makeCode(env, hit.id) });
         return json({ ok: false, reason: 'not_found' });
+      }
+      // ---- daily leaderboard (D1). One row per finished daily drive; the site submits anonymously with a per-browser token.
+      if (url.pathname === '/lb/submit' && env.DB) {
+        const day = parseInt(url.searchParams.get('day') || '', 10), mode = url.searchParams.get('mode') || '', wp = parseFloat(url.searchParams.get('wp') || '');
+        const token = (url.searchParams.get('token') || '').slice(0, 40);
+        if (!(day > 0) || !['daily', 'saban', 'cignetti'].includes(mode) || !(wp >= 0 && wp <= 1) || token.length < 8) return json({ ok: false, reason: 'bad_input' }, 400);
+        await env.DB.prepare('INSERT OR IGNORE INTO results (day, mode, wp, token, ts) VALUES (?1, ?2, ?3, ?4, ?5)').bind(day, mode, wp, token, Date.now()).run();
+        return json(await lbStats(env, day, mode, wp));
+      }
+      if (url.pathname === '/lb/stats' && env.DB) {
+        const day = parseInt(url.searchParams.get('day') || '', 10), mode = url.searchParams.get('mode') || 'daily', wp = parseFloat(url.searchParams.get('wp') || '-1');
+        if (!(day > 0)) return json({ ok: false, reason: 'bad_input' }, 400);
+        return json(await lbStats(env, day, mode, wp));
       }
       return json({ ok: true, service: 'ncaa2mindrill unlock' });
     } catch (e) {

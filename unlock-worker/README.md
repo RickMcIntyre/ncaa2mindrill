@@ -28,6 +28,10 @@ Check it: open `https://ncaa2mindrill-unlock.<you>.workers.dev/` and you should 
 
 In `docs/app.js` set `STRIPE_LINK` to the Payment Link and `UNLOCK_API` to the Worker URL, bump the `app.js?v=` tag in `docs/index.html`, commit, push.
 
+## 4. Daily leaderboard (optional, same Worker)
+
+The final screen can show "you beat 73% of today's 1,204 players" from real results. It needs a Cloudflare D1 database (free tier): run the two commands commented in `wrangler.toml`, paste the database id into the `[[d1_databases]]` block, uncomment it, and `npx wrangler deploy` again. The site submits one anonymous row per finished daily drive (day number, mode, win chance, a random per-browser token); nothing identifies a person.
+
 ## How it works
 
 - "Unlock both · $0.99" opens the Payment Link. After paying, Stripe sends the player back with the session id; the site asks the Worker to confirm it with Stripe and gets a signed **unlock code**, which it keeps in the browser.

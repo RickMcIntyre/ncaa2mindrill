@@ -269,6 +269,47 @@ def lineup(year, tid, gid):
     return out
 
 
+# ---------- defenders: who made the tackles (ESPN-format play text names them) ----------
+TK_RE = re.compile(r'\(#(\d+) ([^;)]+?)(?:;|\))')
+PBU_RE = re.compile(r'broken up by #(\d+) ([^\s;)]+(?: [JS]r\.?)?)', re.I)
+INT_RE = re.compile(r"intercepted by #?(\d*) ?([A-Z][\w\.'-]+(?: [JS]r\.?)?)", re.I)
+dstats = {}
+for r in p[['year', 'def_pos_team', 'text', 'is_sack', 'is_int', 'play_type']].itertuples(index=False):
+    tid = team_name_to_id.get(r.def_pos_team)
+    if tid is None or not r.text:
+        continue
+    key = (int(r.year), tid)
+    d = dstats.setdefault(key, {})
+    for num, name in TK_RE.findall(r.text):
+        name = name.strip().rstrip(',')
+        if len(name) < 3 or name[0].islower():
+            continue
+        e = d.setdefault((num, name), [0, 0, 0, 0])
+        e[0] += 1
+        if r.is_sack:
+            e[1] += 1
+    for num, name in PBU_RE.findall(r.text):
+        e = d.setdefault((num, name.strip()), [0, 0, 0, 0]); e[2] += 1
+    if r.is_int:
+        for num, name in INT_RE.findall(r.text):
+            if num:
+                e = d.setdefault((num, name.strip()), [0, 0, 0, 0]); e[3] += 1
+
+
+def defense_lineup(year, tid):
+    d = dstats.get((year, tid), {})
+    rows = []
+    for (num, name), (tk, sk, pbu, it) in d.items():
+        if tk + pbu + it < 3:
+            continue
+        role = 'DL' if sk >= 2 and pbu <= 1 else 'DB' if pbu + it >= 3 or (pbu + it >= 2 and tk < 15) else 'LB'
+        rows.append(dict(num=num, name=name, tk=tk, sk=sk, pbu=pbu, int=it, role=role, score=tk + 2 * sk + 2 * pbu + 3 * it))
+    rows.sort(key=lambda x: -x['score'])
+    return [{k: v for k, v in r.items() if k != 'score'} for r in rows[:14]]
+
+
+print('defense rosters', sum(1 for k in dstats if len(defense_lineup(*k)) >= 8))
+
 # ---------- pools of real snaps ----------
 pools = {}
 CAP = 110
@@ -588,7 +629,7 @@ for r in cand.itertuples(index=False):
         to=timeouts_left(gid, r.pos_team, r.game_play_number), dto=timeouts_left(gid, r.def_pos_team, r.game_play_number),
         elo=round(float(elo), 1) if not pd.isna(elo) else 0,
         orat=rating(year, off_id), drat=rating(year, def_id), kick=KICK.get((year, off_id), 0.0),
-        lineup=lineup(year, off_id, gid),
+        lineup=lineup(year, off_id, gid), dlineup=defense_lineup(year, def_id),
         result=str(r.drive_result), final=[off_final, def_final], won=off_final > def_final, real=real,
     ))
     # coach's win chance at the end of the real drive (same model the player is scored on)

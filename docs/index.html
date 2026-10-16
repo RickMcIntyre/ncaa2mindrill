@@ -42,7 +42,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .wrap { max-width: 1140px; margin: 0 auto; }
 
-header.top { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; padding-block: 14px 10px; border-bottom: 1px solid var(--line); }
+header.top { display: grid; grid-template-columns: 44px 1fr 90px; align-items: center; padding-block: 14px 10px; border-bottom: 1px solid var(--line); }
+.iconrow { display: flex; gap: 6px; justify-content: flex-end; }
+#soundBtn { font-size: 15px; }
+.card.lb { display: grid; gap: 4px; border-color: var(--amber); }
+.card.lb .who { font-family: var(--f-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-size: 13px; }
+.card.lb .big { font-family: var(--f-ui); font-weight: 800; font-size: 40px; line-height: 1; }
+.card.lb .big small { font-size: 15px; color: var(--muted); font-weight: 600; margin-left: 6px; }
 .brand { text-align: center; }
 .brand h1 { margin: 0; font-family: var(--f-display); font-weight: 400; font-size: clamp(20px, 4vw, 30px); letter-spacing: .04em; line-height: 1; }
 .brand h1 span { color: var(--amber); }
@@ -282,7 +288,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
       <h1>Two-Minute <span>Drill</span></h1>
       <div class="sub" id="subline">College football · FBS 2023–2025</div>
     </div>
-    <button class="iconbtn" id="statsBtn" aria-label="Your stats">▮▮</button>
+    <div class="iconrow"><button class="iconbtn" id="soundBtn" aria-label="Sound on or off" aria-pressed="false">🔇</button><button class="iconbtn" id="statsBtn" aria-label="Your stats">▮▮</button></div>
   </header>
   <nav class="tabs" aria-label="Mode">
     <button id="tabDaily" aria-pressed="true">Daily</button>
@@ -318,8 +324,9 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
 </dialog>
 
 <script src="native.js?v=2"></script>
-<script src="anim.js?v=7"></script>
-<script src="app.js?v=14"></script>
+<script src="sound.js?v=1"></script>
+<script src="anim.js?v=8"></script>
+<script src="app.js?v=15"></script>
 
 </body>
 </html>
