@@ -280,20 +280,20 @@ for r in p[['year', 'def_pos_team', 'text', 'is_sack', 'is_int', 'play_type']].i
         continue
     key = (int(r.year), tid)
     d = dstats.setdefault(key, {})
-    for num, name in TK_RE.findall(r.text):
+    for jnum, name in TK_RE.findall(r.text):
         name = name.strip().rstrip(',')
         if len(name) < 3 or name[0].islower():
             continue
-        e = d.setdefault((num, name), [0, 0, 0, 0])
+        e = d.setdefault((jnum, name), [0, 0, 0, 0])
         e[0] += 1
         if r.is_sack:
             e[1] += 1
-    for num, name in PBU_RE.findall(r.text):
-        e = d.setdefault((num, name.strip()), [0, 0, 0, 0]); e[2] += 1
+    for jnum, name in PBU_RE.findall(r.text):
+        e = d.setdefault((jnum, name.strip()), [0, 0, 0, 0]); e[2] += 1
     if r.is_int:
-        for num, name in INT_RE.findall(r.text):
-            if num:
-                e = d.setdefault((num, name.strip()), [0, 0, 0, 0]); e[3] += 1
+        for jnum, name in INT_RE.findall(r.text):
+            if jnum:
+                e = d.setdefault((jnum, name.strip()), [0, 0, 0, 0]); e[3] += 1
 
 
 def defense_lineup(year, tid):
