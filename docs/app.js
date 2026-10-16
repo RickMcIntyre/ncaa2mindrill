@@ -472,7 +472,7 @@ const isHardMode = m => m === 'saban' || m === 'cignetti';
 // with Stripe and returns a signed unlock code, which the site keeps (and the player can paste on another device).
 const WEB_UNLOCKED = false;
 const STRIPE_LINK = 'https://buy.stripe.com/4gMcN47ic63E3UZ9dedAk00';   // Stripe → Payment Links → the $0.99 "Hard modes" link
-const UNLOCK_API = 'https://ncaa2mindrill-unlock.REPLACE_ME.workers.dev'; // the Cloudflare Worker in unlock-worker/
+const UNLOCK_API = 'https://ncaa2mindrill-unlock.unlock-worker.workers.dev'; // the Cloudflare Worker in unlock-worker/
 const UNLOCK_KEY = 'cfb2md:unlock';
 function webUnlockCode() { try { return localStorage.getItem(UNLOCK_KEY) || ''; } catch { return ''; } }
 function premiumUnlocked() {

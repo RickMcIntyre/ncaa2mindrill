@@ -11,7 +11,7 @@ PRICE_MIN = "99"
 # Daily leaderboard (optional). Create the database once, paste its id below, then create the table:
 #   npx wrangler d1 create ncaa2mindrill
 #   npx wrangler d1 execute ncaa2mindrill --remote --command "CREATE TABLE IF NOT EXISTS results (day INTEGER, mode TEXT, wp REAL, token TEXT, ts INTEGER, UNIQUE(day, mode, token)); CREATE INDEX IF NOT EXISTS results_day ON results(day, mode);"
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "ncaa2mindrill"
-# database_id = "PASTE-THE-ID-HERE"
+[[d1_databases]]
+binding = "DB"
+database_name = "ncaa2mindrill"
+database_id = "530c31e7-eae9-45af-b9e6-5edb0a5d8dfd"
