@@ -1,5 +1,7 @@
 # Web unlock: Stripe + a Cloudflare Worker
 
+**Current state:** Payment Link `https://buy.stripe.com/4gMcN47ic63E3UZ9dedAk00` is live and wired into `docs/app.js`. The Worker is deployed at `https://ncaa2mindrill-unlock.unlock-worker.workers.dev` with the D1 database bound (`ncaa2mindrill`, table `results`) and `UNLOCK_SECRET` set. `STRIPE_SECRET` is set by running `npx wrangler secret put STRIPE_SECRET` in this folder and pasting the restricted key (Checkout Sessions: Read).
+
 Twenty minutes, all in your own accounts. Nothing here stores customer data; Stripe keeps the receipts.
 
 ## 1. Stripe (dashboard.stripe.com)
