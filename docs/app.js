@@ -1177,7 +1177,7 @@ function renderFinal() {
   if (cached && cached.wps) showPct(cached.wps);
   else simulateCallers(sc, 300, (i, n) => { const el = $('#pctText'); if (el) el.textContent = `Simulating ${n} college play-callers on this exact drive… ${i}/${n}`; }, wps => { if ($('#pctBig')) showPct(wps); });
   $('#shareCopy').onclick = () => navigator.clipboard?.writeText(shareTxt).then(() => toast('Copied'), () => toast('Could not copy'));
-  $('#shareX').onclick = () => window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(shareTxt), '_blank', 'noopener');
+  $('#shareX').onclick = () => { const u = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(shareTxt); if (window.Native && window.Native.isNative) window.Native.open(u); else window.open(u, '_blank', 'noopener'); };
   $('#shareImg').onclick = async () => {
     const canvas = $('#shareCanvas');
     const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));

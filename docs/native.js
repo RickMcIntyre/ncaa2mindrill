@@ -60,5 +60,10 @@
     remember(ok);
     return ok;
   };
+  // open an outside link (X intent, the privacy page) in the system browser instead of inside the app's WebView
+  N.open = async function (url) {
+    try { const B = cap && cap.registerPlugin ? cap.registerPlugin('Browser') : null; if (B) { await B.open({ url }); return true; } } catch (e) { /* fall through */ }
+    window.open(url, '_blank', 'noopener'); return false;
+  };
   window.Native = N;
 })();
