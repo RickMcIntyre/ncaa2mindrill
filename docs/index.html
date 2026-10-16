@@ -55,6 +55,13 @@ header.top { display: grid; grid-template-columns: 44px 1fr 90px; align-items: c
 .iconrow { display: flex; gap: 6px; justify-content: flex-end; }
 #soundBtn { font-size: 15px; }
 .card.lb { display: grid; gap: 4px; border-color: var(--amber); }
+.trophy { display: grid; gap: 4px; text-align: center; border: 3px double var(--amber); border-radius: 12px; padding: 14px; background: var(--panel); }
+.trophy.saban { border-color: #d9433a; } .trophy.cignetti { border-color: #e0b43a; }
+.trophy .who { font-family: var(--f-ui); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); font-size: 13px; }
+.trophy .big { font-family: var(--f-ui); font-weight: 800; font-size: 44px; line-height: 1; }
+.trophy.saban .big { color: #d9433a; } .trophy.cignetti .big { color: #e0b43a; }
+.scoreline { margin-top: 4px; }
+.scoreline .muted { color: var(--muted); }
 .card.lb .who { font-family: var(--f-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-size: 13px; }
 .card.lb .big { font-family: var(--f-ui); font-weight: 800; font-size: 40px; line-height: 1; }
 .card.lb .big small { font-size: 15px; color: var(--muted); font-weight: 600; margin-left: 6px; }
@@ -335,7 +342,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
 <script src="native.js?v=2"></script>
 <script src="sound.js?v=1"></script>
 <script src="anim.js?v=8"></script>
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 
 </body>
 </html>

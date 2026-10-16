@@ -398,9 +398,9 @@ function maybeQuip(o, r, id, mods, st) {
   return q;
 }
 const VERDICTS = {
-  win: ['You beat {c}.', 'You out-called {c}. He has a staff. You have a browser.', 'You beat {c}, who, to be fair, could not see this screen.'],
-  even: ['Dead even with {c}.', 'Dead even with {c}. Hug it out.', 'A tie with {c}, which is still a result.'],
-  loss: ['{c} wins this one.', '{c} wins this one. He does this for a living, which is not an excuse.', '{c} had the better drive. He also had the real players, which is the same excuse.'],
+  win: ['You beat {c}. On a couch. He was on a sideline with 90,000 people screaming.', 'You beat {c}, with a replay button and no headset.', 'You beat {c}. He could not see this screen. He also could not pause.'],
+  even: ['{c} tied you with a worse view and no second chances.', 'Dead even with {c}. He did his live.', 'A tie with {c}, who was not allowed to think for 40 seconds between snaps.'],
+  loss: ['{c} wins. He did it once, live, no do-overs.', '{c} wins this one. He does this for a living, which is not an excuse for you.', '{c} had the better drive. You had the better chair.'],
 };
 const PCT_LINES = [
   [90, 'Top of the room. The simulated play-callers are made of math and you still beat them.'],
@@ -943,12 +943,14 @@ function runPlay(id, tgt, mods = {}) {
   const ev = expected(st, id, tgt, mods);
   const best = opts[0]?.ev ?? ev;
   const gap = best - ev;
-  const bestWord = ['✓ The best call on the board.', '✓ The best call on the board. The model and you agree, which it will not admit.', '✓ Best call available. Frame it.'];
-  const costWord = ['Costly.', 'Costly. The model winced.', 'Costly. That one goes in the film session.'];
+  // You are graded on a cliff: green is the best call and nothing else. The coach gets a curve (see coachSnaps).
+  const bestWord = ['✓ The best call on the board.', '✓ The best call. The model and you agree, which it will not admit.', '✓ Best call available. Frame it, it may not happen again.'];
+  const nearWord = ['Close, not correct.', 'Not the call. Near it.', 'Almost. A coach gets fired for almost.'];
+  const costWord = ['Wrong.', 'Wrong. The model winced.', 'Wrong. That one goes in the film session, with the lights on.'];
+  const pts = Math.max(1, Math.round(gap * 100));
   const grade = gap <= 0.005 ? { cls: '', text: bestWord[rand() < 0.75 ? 0 : 1 + Math.floor(rand() * 2)], e: '🟩' }
-    : gap <= 0.02 ? { cls: '', text: `Strong call, within ${Math.max(1, Math.round(gap * 100))} point${Math.round(gap * 100) > 1 ? 's' : ''} of the best (${esc(opts[0].label)}).`, e: '🟩' }
-    : gap <= 0.05 ? { cls: 'mid', text: `Playable. ${esc(opts[0].label)} was worth ${Math.round(gap * 100)} more points of win chance.`, e: '🟨' }
-    : { cls: 'low', text: `${costWord[rand() < 0.6 ? 0 : 1 + Math.floor(rand() * 2)]} ${esc(opts[0].label)} was worth ${Math.round(gap * 100)} more points of win chance.`, e: '🟥' };
+    : gap <= 0.03 ? { cls: 'mid', text: `${nearWord[Math.floor(rand() * nearWord.length)]} ${esc(opts[0].label)} was worth ${pts} more point${pts > 1 ? 's' : ''} of win chance.`, e: '🟨' }
+    : { cls: 'low', text: `${costWord[rand() < 0.6 ? 0 : 1 + Math.floor(rand() * 2)]} ${esc(opts[0].label)} was worth ${pts} more points of win chance.`, e: '🟥' };
   G.grades.push(grade.e);
   const coachCall = G.st.snaps === 0 ? coachOpening(sc) : null;
   const callLabel = mods.route ? `${ROUTES[mods.route].label} to ${short(tgt.name)}` : tgt ? `${CALLS[id].label} to ${short(tgt.name)}` : CALLS[id].run && mods.side && !['r_sneak', 'r_in', 'r_draw'].includes(id) ? `${CALLS[id].label} ${mods.side === 'L' ? 'left' : 'right'}` : CALLS[id].label;
@@ -1043,6 +1045,8 @@ function conclude(end, n, msg) {
   else { wp = oppBall(n, n.s, n.T, end.oppYtg); desc = `${end.why}. ${T_(G.sc.dfn).school} takes over with ${clock(n.T)} left.`; }
   const scored = n.os - G.sc.os;
   G.done = { wp, desc, os: n.os, ds: n.ds, T: n.T, scored, snaps: n.snaps };
+  G.done.trophy = judgeTrophy();
+  if (G.done.trophy) { (store.trophies ||= { saban: [], cignetti: [] })[G.done.trophy].push({ no: G.no, mode: G.mode, date: new Date().toISOString().slice(0, 10), game: gameLabel(G.sc).title }); }
   if (G.mode === 'daily' || isHardMode(G.mode)) { (store[G.mode] ||= {})[G.no] = { done: G.done, grades: G.grades, log: G.log, snaps: G.snaps, coachWp: G.sc.cwp, sid: G.sc.id }; }
   else { store.practice[G.sc.id] = { wp, coachWp: G.sc.cwp }; }
   saveStore();
@@ -1072,7 +1076,7 @@ function showLeaderboard(r) {
 function simulateCallers(sc, N, onProgress, onDone) {
   const results = []; let i = 0;
   const one = () => {
-    const temp = 0.012 + rand() * 0.05, lean = (rand() - 0.5) * 0.06, toProb = 0.3 + rand() * 0.7;
+    const temp = 0.006 + rand() * 0.03, lean = (rand() - 0.5) * 0.04, toProb = 0.4 + rand() * 0.6; // sharp callers; the room is not kind
     let st = { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0, look: null };
     for (let guard = 0; guard < 40; guard++) {
       if (st.pending > 0) { if (st.to > 0 && st.T < 75 && rand() < toProb) st.to -= 1; else st.T = Math.max(0, st.T - st.pending); st.pending = 0; }
@@ -1139,6 +1143,19 @@ function resemblance() {
 
 // ---------- comparison with the real coach ----------
 const CALL_WORD = { p_short_side: 'Short pass, sideline', p_short_mid: 'Short pass, middle', p_deep_side: 'Deep pass, sideline', p_deep_mid: 'Deep pass, middle', p_rb: 'Pass to the back', pass: 'Pass', r_in: 'Inside run', r_out: 'Outside run', r_qb: 'QB run', r_sneak: 'QB sneak', run: 'Run', spike: 'Spike', kneel: 'Kneel', fg: 'Field goal', punt: 'Punt', timeout: 'Timeout', penalty: 'Penalty', other: 'Play' };
+// the coach's real call graded by the same board you faced, but on a curve: within 2 points counts as the best call
+function gradeCoachCall(sc, p, to, dto) {
+  const id = p.c === 'pass' ? null : p.c === 'run' ? null : CALLS[p.c] ? p.c : null;
+  if (!id || !CALLS[id] || id === 'timeout' || id === 'penalty' || id === 'other') return null;
+  const st = { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: p.s, ytg: p.y, down: p.d, dist: p.dist, to, dto, elo: sc.elo, pending: 0, snaps: 0, look: 'base' };
+  if (!available(st, id)) return null;
+  let opts; try { opts = scoreOptions(st); } catch { return null; }
+  if (!opts.length) return null;
+  const mine = opts.filter(o => o.id === id); const ev = mine.length ? Math.max(...mine.map(o => o.ev)) : null;
+  if (ev == null) return null;
+  const gap = opts[0].ev - ev;
+  return { gap, e: gap <= 0.02 ? '🟩' : gap <= 0.06 ? '🟨' : '🟥', best: opts[0].label };
+}
 function coachSnaps(sc) {
   // the real drive, with our win-probability model run at every snap so both sides are judged the same way
   let to = sc.to, dto = sc.dto; const out = [];
@@ -1146,22 +1163,40 @@ function coachSnaps(sc) {
     if (p.c === 'timeout') { if (p.t.toLowerCase().includes(T_(sc.off).school.toLowerCase().split(' ')[0])) to = Math.max(0, to - 1); else dto = Math.max(0, dto - 1); out.push({ kind: 'timeout', text: p.t, sit: p.s != null ? clock(p.s) : '' }); continue; }
     if (p.d == null || p.s == null) { out.push({ kind: p.c, text: p.t, sit: p.s != null ? clock(p.s) : '' }); continue; }
     const wp = wpModel(sc.os - sc.ds, p.s, p.y, p.d, p.dist, to, dto, sc.elo);
-    out.push({ kind: p.c === 'timeout' ? 'timeout' : p.c.startsWith('p_') || p.c === 'pass' ? 'pass' : p.c.startsWith('r_') || p.c === 'run' ? 'run' : p.c, call: CALL_WORD[p.c] || 'Play', text: p.t, sit: `${ord(p.d)} & ${p.dist} · ${p.y === 50 ? 'midfield' : p.y > 50 ? T_(sc.off).abbr + ' ' + (100 - p.y) : T_(sc.dfn).abbr + ' ' + p.y} · ${clock(p.s)}`, wpBefore: wp });
+    const g = gradeCoachCall(sc, p, to, dto);
+    out.push({ kind: p.c === 'timeout' ? 'timeout' : p.c.startsWith('p_') || p.c === 'pass' ? 'pass' : p.c.startsWith('r_') || p.c === 'run' ? 'run' : p.c, call: CALL_WORD[p.c] || 'Play', text: p.t, sit: `${ord(p.d)} & ${p.dist} · ${p.y === 50 ? 'midfield' : p.y > 50 ? T_(sc.off).abbr + ' ' + (100 - p.y) : T_(sc.dfn).abbr + ' ' + p.y} · ${clock(p.s)}`, wpBefore: wp, e: g ? g.e : null, gap: g ? g.gap : null });
   }
   return out;
 }
+// Trophies. A Saban is a perfect game: every snap the best call, at least five snaps, and you beat the coach.
+// A Cignetti is every snap green or yellow with at least 60% best calls, and you beat the coach. Rare on purpose.
+function judgeTrophy() {
+  if (!G.done || !G.snaps.length || G.mode === 'practice') return null;
+  const n = G.snaps.length, greens = G.snaps.filter(s => s.e === '🟩').length, reds = G.snaps.filter(s => s.e === '🟥').length;
+  const beat = G.done.wp >= G.sc.cwp;
+  if (n >= 5 && greens === n && beat) return 'saban';
+  if (n >= 4 && reds === 0 && greens / n >= 0.6 && beat) return 'cignetti';
+  return null;
+}
+const TROPHY = {
+  saban: { label: 'A Saban', line: 'A perfect game. Every call the best call, and you beat the coach. This gets handed out about as often as a shiny.', stamp: 'SABAN GAME' },
+  cignetti: { label: 'A Cignetti', line: 'No wrong calls, mostly right ones, and you beat the coach. Google yourself.', stamp: 'CIGNETTI GAME' },
+};
 function comparison(sc) {
   const mine = G.snaps, theirs = coachSnaps(sc);
   const count = (arr, k) => arr.filter(s => s.kind === k).length;
   const theirPlays = theirs.filter(s => s.wpBefore != null);
+  const myBest = mine.filter(s => s.e === '🟩').length, myGraded = mine.length;
+  const cGraded = theirPlays.filter(s => s.e), cBest = cGraded.filter(s => s.e === '🟩').length;
   const summary = `<div><b>You</b>: ${count(mine, 'pass')} pass${count(mine, 'pass') === 1 ? '' : 'es'}, ${count(mine, 'run')} run${count(mine, 'run') === 1 ? '' : 's'}${count(mine, 'spike') ? `, ${count(mine, 'spike')} spike` : ''}${count(mine, 'fg') ? ', a field goal try' : ''} · ${G.done.snaps} snaps · ended with ${clock(G.done.T)} left</div>
-    <div><b>${esc(sc.coach)}</b>: ${count(theirPlays, 'pass')} pass${count(theirPlays, 'pass') === 1 ? '' : 'es'}, ${count(theirPlays, 'run')} run${count(theirPlays, 'run') === 1 ? '' : 's'}${count(theirs, 'timeout') ? `, ${count(theirs, 'timeout')} timeout${count(theirs, 'timeout') > 1 ? 's' : ''}` : ''}${count(theirPlays, 'fg') ? ', a field goal try' : ''} · ${theirPlays.length} snaps · ${esc(resultWord(sc).toLowerCase())}</div>`;
+    <div><b>${esc(sc.coach)}</b>: ${count(theirPlays, 'pass')} pass${count(theirPlays, 'pass') === 1 ? '' : 'es'}, ${count(theirPlays, 'run')} run${count(theirPlays, 'run') === 1 ? '' : 's'}${count(theirs, 'timeout') ? `, ${count(theirs, 'timeout')} timeout${count(theirs, 'timeout') > 1 ? 's' : ''}` : ''}${count(theirPlays, 'fg') ? ', a field goal try' : ''} · ${theirPlays.length} snaps · ${esc(resultWord(sc).toLowerCase())}</div>
+    <div class="scoreline"><b>Best call on the board:</b> you ${myBest} of ${myGraded}${cGraded.length ? ` · ${esc(sc.coach)} ${cBest} of ${cGraded.length}` : ''}. <span class="muted">He is graded on a curve. You are not. He has a staff.</span></div>`;
   const n = Math.max(mine.length, theirs.length);
   let rows = '';
   for (let i = 0; i < n; i++) {
     const a = mine[i], b = theirs[i];
     rows += `<div class="cell ${a ? '' : 'empty'}">${a ? `<div class="sit">${esc(a.sit)}</div><div class="call">${a.e} ${esc(a.call)}</div><div class="res">${esc(a.text)}</div><div class="wpl">${pct(a.wpBefore)} → <b>${pct(a.wpAfter)}</b></div>` : ''}</div>`;
-    rows += `<div class="cell ${b ? '' : 'empty'}">${b ? `<div class="sit">${esc(b.sit)}</div><div class="call">${esc(b.call || (b.kind === 'timeout' ? 'Timeout' : 'Play'))}</div><div class="res">${esc(b.text)}</div>${b.wpBefore != null ? `<div class="wpl">${pct(b.wpBefore)}${theirs[i + 1] && theirs[i + 1].wpBefore != null ? ` → <b>${pct(theirs[i + 1].wpBefore)}</b>` : ` → <b>${pct(sc.cwp)}</b>`}</div>` : ''}` : ''}</div>`;
+    rows += `<div class="cell ${b ? '' : 'empty'}">${b ? `<div class="sit">${esc(b.sit)}</div><div class="call">${b.e ? b.e + ' ' : ''}${esc(b.call || (b.kind === 'timeout' ? 'Timeout' : 'Play'))}</div><div class="res">${esc(b.text)}</div>${b.wpBefore != null ? `<div class="wpl">${pct(b.wpBefore)}${theirs[i + 1] && theirs[i + 1].wpBefore != null ? ` → <b>${pct(theirs[i + 1].wpBefore)}</b>` : ` → <b>${pct(sc.cwp)}</b>`}</div>` : ''}` : ''}</div>`;
   }
   let turn = '';
   const swing = mine.reduce((best, s) => Math.abs(s.wpAfter - s.wpBefore) > Math.abs(best.wpAfter - best.wpBefore) ? s : best, mine[0]);
@@ -1171,7 +1206,7 @@ function comparison(sc) {
 function shareText() {
   const sc = G.sc, d = G.done, gl = gameLabel(sc), saban = isHardMode(G.mode);
   const verdict = d.wp - sc.cwp > 0.02 ? `I beat ${sc.coach}` : Math.abs(d.wp - sc.cwp) <= 0.02 ? `Dead even with ${sc.coach}` : `${sc.coach} got me`;
-  return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}\n${G.grades.join('')}\nncaa2mindrill.com`;
+  return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}${d.trophy ? ` · ${TROPHY[d.trophy].stamp}` : ''}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}\n${G.grades.join('')}\nncaa2mindrill.com`;
 }
 // 1200x630 share card (the size X, Facebook and iMessage previews use)
 function drawShareCard(cv) {
@@ -1209,6 +1244,11 @@ function drawShareCard(cv) {
   c.fillText(line, 60, 540);
   const res2 = resemblance();
   if (res2) { c.fillStyle = '#eef2f6'; c.font = '700 26px "Saira Condensed", "Arial Narrow", sans-serif'; c.fillText(`CALLS IT LIKE ${res2.best.coach.toUpperCase()} (${res2.best.school.toUpperCase()})`, W - 560, 500); }
+  if (d.trophy) { // the stamp: rotated, loud, rare
+    c.save(); c.translate(W - 250, 150); c.rotate(-0.18);
+    c.strokeStyle = d.trophy === 'saban' ? '#d9433a' : '#e0b43a'; c.lineWidth = 6; c.strokeRect(-150, -42, 300, 84);
+    c.fillStyle = c.strokeStyle; c.font = '800 46px "Saira Condensed", "Arial Narrow", sans-serif'; c.textAlign = 'center'; c.fillText(TROPHY[d.trophy].stamp, 0, 16); c.textAlign = 'left'; c.restore();
+  }
   c.fillStyle = '#eef2f6'; c.font = '800 34px "Saira Condensed", "Arial Narrow", sans-serif'; c.textAlign = 'right';
   c.fillText('NCAA2MINDRILL.COM', W - 50, H - 24); c.textAlign = 'left';
 }
@@ -1222,7 +1262,7 @@ function renderFinal() {
   const diff = d.wp - sc.cwp;
   const vpool = VERDICTS[Math.abs(diff) < 0.02 ? 'even' : diff > 0 ? 'win' : 'loss'];
   const vi = (G.no || sc.id) % vpool.length; // stable for the day, varied across days
-  const verdict = vpool[vi].replace('{c}', sc.coach).replace(/\.$/, '');
+  const verdict = vpool[vi].replace('{c}', sc.coach);
   const you = d.wp >= sc.cwp;
   const saban = isHardMode(G.mode);
   const sabanLine = saban ? `<div class="eyebrow" style="text-align:center;color:var(--amber)">${d.wp >= 0.5 ? (G.mode === 'saban' ? 'You pulled it off. Saban would nod, once.' : 'You pulled it off. Google yourself.') : d.wp > sc.wp0 ? `You raised a ${pct(sc.wp0)} shot to ${pct(d.wp)}.` : `A ${pct(sc.wp0)} shot stayed a long shot.`}</div>` : '';
@@ -1235,6 +1275,7 @@ function renderFinal() {
     <div class="eyebrow" style="text-align:center">${esc(gl.when)} · ${esc(gl.title)}</div>
     <div class="finalscore"><div class="fs"><span class="chip" style="background:${off.color}"></span><b>${esc(off.abbr)}</b><em>${d.os}</em></div><div class="fsmid"><div class="gl">After your drive</div><div class="note">${clock(d.T)} left</div></div><div class="fs r"><em>${d.ds}</em><b>${esc(def.abbr)}</b><span class="chip" style="background:${def.color}"></span></div></div>
     <h2 class="verdict">${esc(verdict)}</h2>
+    ${d.trophy ? `<div class="trophy ${d.trophy}"><div class="who">Awarded</div><div class="big">${esc(TROPHY[d.trophy].label)}</div><div class="end">${esc(TROPHY[d.trophy].line)}</div></div>` : ''}
     ${sabanLine}
     ${tiles}
     <div class="vs">
@@ -1378,7 +1419,8 @@ function showStats() {
   const sab = Object.values(store.saban || {}).filter(v => v.done), cig = Object.values(store.cignetti || {}).filter(v => v.done);
   const sabWon = sab.filter(v => v.done.wp >= 0.5).length, cigWon = cig.filter(v => v.done.wp >= 0.5).length;
   $('#statsBody').innerHTML = `<div><b>${days.length}</b><span>Played</span></div><div><b>${beat}</b><span>Beat the coach</span></div><div><b>${streak}</b><span>Day streak</span></div><div><b>${days.length ? (avg >= 0 ? '+' : '') + Math.round(avg * 100) : '–'}</b><span>Avg vs coach</span></div>` +
-    `<div><b>${sab.length}</b><span>Saban drives</span></div><div><b>${sabWon}</b><span>Saban wins (50%+)</span></div><div><b>${cig.length}</b><span>Cignetti drives</span></div><div><b>${cigWon}</b><span>Cignetti wins (50%+)</span></div>`;
+    `<div><b>${sab.length}</b><span>Saban drives</span></div><div><b>${sabWon}</b><span>Saban wins (50%+)</span></div><div><b>${cig.length}</b><span>Cignetti drives</span></div><div><b>${cigWon}</b><span>Cignetti wins (50%+)</span></div>` +
+    `<div><b>${(store.trophies && store.trophies.saban || []).length}</b><span>Sabans earned</span></div><div><b>${(store.trophies && store.trophies.cignetti || []).length}</b><span>Cignettis earned</span></div><div style="grid-column:span 2" class="note">A Saban is a perfect game: every call the best one, and you beat the coach. A Cignetti: no wrong calls, mostly right ones. Both rare on purpose.</div>`;
   $('#statsNote').textContent = days.length ? 'Saved in this browser only.' : 'Finish today\'s drive to start your record. Saved in this browser only.';
   $('#statsDlg').showModal();
 }
