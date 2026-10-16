@@ -41,3 +41,5 @@ Then open http://localhost:8765/. To deploy, upload the contents of `docs/` (ind
 - **Percentile**: 300 synthetic play-callers (different sharpness, run/pass lean, timeout habits) replay the same drive through the engine; your finish is ranked against theirs.
 - **Coach resemblance**: your pass rate overall, on early downs and on passing downs is matched to the nearest real FBS head coach's 2023–25 tendencies.
 - **Share**: a 1200×630 card (canvas) with Web Share / X intent / copy / save.
+- **Grading**: the player is graded on a cliff (green only for the exact best call, yellow within 3 points, red otherwise); the coach's real calls are graded on a curve (green within 2 points) and shown beside yours. Verdict copy favors the coach on purpose.
+- **Trophies**: a *Saban* is a perfect game (5+ snaps, every call the best one, beat the coach); a *Cignetti* is no wrong calls with at least 60% best calls and a win over the coach. Both are stored in the browser and stamped on the share card.
