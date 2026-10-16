@@ -52,9 +52,9 @@ A debug build is produced by `source app/gradle-env.sh && cd app/android && ./gr
 - Category: Games → Sports. Age rating: everyone.
 - Review notes: "The hard modes are behind a single non-consumable purchase (hard_modes). Everything else is free. Use the Restore button on the paywall to re-check a purchase."
 
-## 5. Flip the website
+## 5. The website sells the unlock too (Stripe)
 
-When the app is approved, in `docs/app.js` set `WEB_UNLOCKED = false` so Saban and Cignetti on the website show the "get the app" paywall, and put the real store links into `docs/app/index.html` (the two badges have ids `ios` and `android`).
+The hard modes are locked on the website now (`WEB_UNLOCKED = false` in `docs/app.js`). The web unlock runs through your Stripe account and a tiny Cloudflare Worker; the steps are in `unlock-worker/README.md`. When the apps are approved, also put the store links into `docs/app/index.html` (ids `ios` and `android`).
 
 ## 6. Later
 

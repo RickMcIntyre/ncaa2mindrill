@@ -447,23 +447,66 @@ const HARD_MODES = {
   cignetti: { label: 'Cignetti mode', tag: 'CIGNETTI MODE', eyebrow: 'Cignetti mode', btn: 'Google me', cls: 'cignetti', fine: `Cignetti mode drives start between ${Math.round(HARD_WP * 100)}% and ${Math.round(CIG_WP * 100)}% win chance. Hard, not hopeless.`, pitch: sc => `Starting win chance: <b>${pct(sc.wp0)}</b>. Hard, not hopeless. The kind of drive that gets a coach a statue or a buyout.<br>${esc(sc.coach)} ${sc.won ? 'got it done' : "didn't"}. Your turn.` },
 };
 const isHardMode = m => m === 'saban' || m === 'cignetti';
-// The hard modes are the paid part of the app. On the web they stay open until the app ships (flip WEB_UNLOCKED).
-const WEB_UNLOCKED = true;
+// The hard modes are paid. In the app: one in-app purchase (RevenueCat, see native.js). On the web: a Stripe Payment
+// Link; after paying, Stripe sends the player back here with the Checkout session id, the unlock worker verifies it
+// with Stripe and returns a signed unlock code, which the site keeps (and the player can paste on another device).
+const WEB_UNLOCKED = false;
+const STRIPE_LINK = 'https://buy.stripe.com/REPLACE_ME';          // Stripe → Payment Links → the $0.99 "Hard modes" link
+const UNLOCK_API = 'https://ncaa2mindrill-unlock.REPLACE_ME.workers.dev'; // the Cloudflare Worker in unlock-worker/
+const UNLOCK_KEY = 'cfb2md:unlock';
+function webUnlockCode() { try { return localStorage.getItem(UNLOCK_KEY) || ''; } catch { return ''; } }
 function premiumUnlocked() {
   if (window.Native && window.Native.isNative) return !!window.Native.entitled;
-  return WEB_UNLOCKED;
+  return WEB_UNLOCKED || !!webUnlockCode();
+}
+function storeUnlock(code) { try { localStorage.setItem(UNLOCK_KEY, code); } catch { /* storage unavailable: unlocked for this visit only */ } }
+async function unlockApi(path, params) {
+  const u = new URL(path, UNLOCK_API); for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  const r = await fetch(u, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`unlock service ${r.status}`);
+  return r.json();
+}
+// Back from Stripe: ?unlock=<checkout session id>. Claim it, keep the code, clean the URL.
+async function claimFromUrl() {
+  const sid = new URLSearchParams(location.search).get('unlock');
+  if (!sid) return false;
+  history.replaceState(null, '', location.pathname + (location.hash || ''));
+  try {
+    const r = await unlockApi('/claim', { session_id: sid });
+    if (r && r.ok && r.code) { storeUnlock(r.code); toast('Unlocked. Both modes are yours.'); return true; }
+    toast('Payment not confirmed yet. If you paid, use "I already paid" with your receipt email.');
+  } catch (e) { toast('Could not reach the unlock service. Try again in a minute.'); }
+  return false;
 }
 function renderPaywall(mode) {
   const m = HARD_MODES[mode], native = window.Native && window.Native.isNative;
+  const configured = !STRIPE_LINK.includes('REPLACE_ME');
   app.innerHTML = `<section class="intro paywall">
     <div class="eyebrow">${esc(m.eyebrow)} · locked</div>
     <h2 class="headline" style="font-size:clamp(40px,10vw,72px)">The hard<small>modes</small></h2>
     <div class="pitch"><b>Saban mode</b>: 10% to win or worse, or two scores down. The 28–3 drives.<br><b>Cignetti mode</b>: 10–25% to win. Hard, not hopeless.<br>One unlock, both modes, a new drive of each every day.</div>
     ${native ? `<button class="cta" id="buyBtn">Unlock both · ${esc(window.Native.price || '$0.99')}</button><button class="cta ghost" id="restoreBtn">Restore purchase</button><div class="fine" id="buyNote"></div>`
-      : `<div class="fine">Saban and Cignetti mode live in the NCAA Two-Minute Drill app. One $0.99 unlock, both modes.</div><div class="row"><a class="cta" href="https://ncaa2mindrill.com/app" rel="noopener">Get the app</a></div>`}
+      : `${configured ? `<a class="cta" id="stripeBtn" href="${esc(STRIPE_LINK)}">Unlock both · $0.99</a>` : `<button class="cta" disabled>Unlock both · $0.99 · checkout opens soon</button>`}
+         <details class="restore"><summary>I already paid</summary><div class="fine">Paste the unlock code from your first device, or the receipt email Stripe sent you.</div><div class="row"><input id="codeIn" class="codein" placeholder="Unlock code or receipt email" autocomplete="off"><button class="cta ghost" id="codeBtn">Unlock</button></div><div class="fine" id="buyNote"></div></details>
+         <div class="fine">Card payments by Stripe. One payment, both modes, forever. It's also in the <a href="https://ncaa2mindrill.com/app">app</a>.</div>`}
   </section>`;
   const b = $('#buyBtn'); if (b) b.onclick = async () => { b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { toast('Unlocked. Go win.'); setTab(mode); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
   const r = $('#restoreBtn'); if (r) r.onclick = async () => { $('#buyNote').textContent = 'Checking…'; try { const ok = await window.Native.restore(); $('#buyNote').textContent = ok ? 'Restored.' : 'No previous purchase found for this account.'; if (ok) setTab(mode); } catch (e) { $('#buyNote').textContent = 'Restore failed: ' + (e && e.message || e); } };
+  const cb = $('#codeBtn'); if (cb) cb.onclick = async () => {
+    const v = ($('#codeIn').value || '').trim(); if (!v) return;
+    $('#buyNote').textContent = 'Checking…';
+    try {
+      const res = v.includes('@') ? await unlockApi('/restore', { email: v }) : await unlockApi('/verify', { code: v });
+      if (res && res.ok && res.code) { storeUnlock(res.code); toast('Unlocked.'); setTab(mode); }
+      else $('#buyNote').textContent = res && res.reason === 'not_found' ? 'No payment found for that. Check the email on your Stripe receipt.' : 'That code didn\'t check out.';
+    } catch (e) { $('#buyNote').textContent = 'Could not reach the unlock service. Try again in a minute.'; }
+  };
+}
+// a small card on the hard-mode intro so players can copy their code to another device
+function unlockCodeNote() {
+  const code = webUnlockCode();
+  if (!code || (window.Native && window.Native.isNative)) return '';
+  return `<div class="fine">Unlocked on this device. Your code for other devices: <code class="code">${esc(code)}</code> <button class="mod" id="copyCode">Copy</button></div>`;
 }
 
 // ---------- game state ----------
@@ -619,8 +662,10 @@ function showIntro(sc, mode, no) {
     <div class="pitch">${pitch}</div>
     <button class="cta" id="go">${hm ? hm.btn : 'Take the field'}</button>
     <div class="fine">Real score, clock, ball, timeouts and skill players from that game. ${esc(def.school)} coached by ${esc(sc.dcoach)}.${hm ? ' ' + hm.fine : ''}</div>
+    ${hm ? unlockCodeNote() : ''}
   </section>`;
   $('#go').onclick = () => { newGame(sc, mode, no); renderPlay(); };
+  const cc = $('#copyCode'); if (cc) cc.onclick = () => navigator.clipboard?.writeText(webUnlockCode()).then(() => toast('Code copied'), () => toast(webUnlockCode()));
 }
 
 // seconds that come off a running clock before the next snap, by tempo (college play clock is 40 s)
@@ -1297,6 +1342,8 @@ fetch('data.json').then(r => r.json()).then(d => {
   D.cig = D.scen.filter(isCig).sort((a, b) => a.id - b.id);
   if (window.Native && window.Native.init) window.Native.init().then(() => { if (isHardMode(tab)) setTab(tab); }).catch(() => {});
   let seen = false; try { seen = localStorage.getItem('cfb2md:seen') === '1'; localStorage.setItem('cfb2md:seen', '1'); } catch { seen = true; }
-  setTab('daily');
-  if (!seen) $('#helpDlg').showModal();
+  const back = location.search.includes('unlock=');
+  const startTab = location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : 'daily';
+  if (back) claimFromUrl().then(() => setTab(startTab)); else setTab(startTab);
+  if (!seen && !back) $('#helpDlg').showModal();
 }).catch(() => { app.innerHTML = '<p class="note">Could not load the drive data. Reload the page to try again.</p>'; });
