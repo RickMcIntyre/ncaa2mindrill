@@ -676,7 +676,7 @@ let G = null; // current game
 function newGame(sc0, mode, no) {
   const sc = { ...sc0, lineup: JSON.parse(JSON.stringify(sc0.lineup)) }; // this game's own copy of the lineup: benching never touches the data
   G = {
-    mode, no, sc, sc0, subs: [], log: [], grades: [], snaps: [],
+    mode, no, sc, sc0, subs: [], log: [], grades: [], snaps: [], survKind: mode === 'survival' ? survKind : null,
     st: { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0 },
     useTO: false, tempo: 'neutral', picking: null, pickerSlot: null, last: null, busy: false, done: null, routes: { ...DEFAULT_ROUTES }, mods: {}, runSide: 'R', aim: null, twoPt: null,
     pers: persAvailable(sc, store.pers || '11') ? (store.pers || '11') : '11',
@@ -860,7 +860,7 @@ function setTab(t) {
     if (isHardMode(t) && premiumUnlocked()) {
       const v = hardView[t] || 'today';
       sn.hidden = false;
-      sn.innerHTML = `<button data-view="today" aria-pressed="${v === 'today'}">Today's drive</button><button data-view="library" aria-pressed="${v === 'library'}">Library</button>`;
+      sn.innerHTML = `<button data-view="today" aria-pressed="${v === 'today'}">Today's drive</button><button data-view="survival" aria-pressed="${v === 'survival'}">Survival</button><button data-view="library" aria-pressed="${v === 'library'}">Library</button>`;
       sn.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { hardView[t] = b.dataset.view; setTab(t); });
     } else if (t === 'survival') {
       sn.hidden = false;
@@ -869,8 +869,8 @@ function setTab(t) {
     } else sn.hidden = true;
   }
   if (t === 'daily') showDaily('daily');
-  else if (t === 'saban' || t === 'cignetti') { if ((hardView[t] || 'today') === 'library' && premiumUnlocked()) renderLibrary(t); else showDaily(t); }
-  else if (t === 'survival') { if (survView === 'library') showPractice(); else showSurvival(); }
+  else if (t === 'saban' || t === 'cignetti') { const v = hardView[t] || 'today'; if (v === 'library' && premiumUnlocked()) renderLibrary(t); else if (v === 'survival' && premiumUnlocked()) showSurvival(t); else showDaily(t); }
+  else if (t === 'survival') { if (survView === 'library') showPractice(); else showSurvival('free'); }
   else showCoaches();
   window.scrollTo(0, 0);
 }
@@ -1416,7 +1416,7 @@ function conclude(end, n, msg) {
   const scored = n.os - G.sc.os;
   G.done = { wp, desc, os: n.os, ds: n.ds, T: n.T, scored, snaps: n.snaps };
   if (G.mode === 'survival') { // the rest of the game plays out at the model's odds: win to stay alive
-    const S = survState(), cur = S.cur || (S.cur = { streak: 0, drives: [], over: false });
+    const S = survState(G.survKind || 'free'), cur = S.cur || (S.cur = { streak: 0, drives: [], over: false });
     const won = wp >= 0.999 ? true : wp <= 0.001 ? false : rand() < wp;
     cur.drives.push({ sid: G.sc.id, wp, cwp: G.sc.cwp, won, round: G.no }); cur.next = null;
     if (won) { cur.streak += 1; S.best = Math.max(S.best || 0, cur.streak); } else { cur.over = true; S.runs = (S.runs || 0) + 1; }
@@ -1424,7 +1424,11 @@ function conclude(end, n, msg) {
   }
   G.done.trophy = judgeTrophy();
   if (G.done.trophy) { (store.trophies ||= { saban: [], cignetti: [] })[G.done.trophy].push({ no: G.no, mode: G.mode, date: new Date().toISOString().slice(0, 10), game: gameLabel(G.sc).title }); }
-  if (G.mode === 'daily' || isHardMode(G.mode)) { (store[G.mode] ||= {})[G.no] = { done: G.done, grades: G.grades, log: G.log, snaps: G.snaps, coachWp: G.sc.cwp, sid: G.sc.id }; }
+  if (G.mode === 'daily' || isHardMode(G.mode)) {
+    // the first attempt is the record; a retry only counts how many times you came back
+    if (!G.retry) (store[G.mode] ||= {})[G.no] = { done: G.done, grades: G.grades, log: G.log, snaps: G.snaps, coachWp: G.sc.cwp, sid: G.sc.id };
+    else { const rec = (store[G.mode] ||= {})[G.no]; if (rec) rec.retries = (rec.retries || 0) + 1; }
+  }
   else { store.practice[G.sc.id] = { wp, coachWp: G.sc.cwp }; }
   saveStore();
   track('drive_done', { mode: G.mode, wp: Math.round(wp * 100), beat_coach: wp >= G.sc.cwp ? 1 : 0 });
@@ -1434,7 +1438,7 @@ function conclude(end, n, msg) {
 // ---------- real-player leaderboard (needs the worker's D1 table; silently skipped until it exists) ----------
 function playerToken() { let t = ''; try { t = localStorage.getItem('cfb2md:token') || ''; if (!t) { t = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12); localStorage.setItem('cfb2md:token', t); } } catch { t = 'anon' + Math.random().toString(36).slice(2, 10); } return t; }
 async function submitResult() {
-  if (!(G.mode === 'daily' || isHardMode(G.mode)) || !G.no || UNLOCK_API.includes('REPLACE_ME')) return;
+  if (!(G.mode === 'daily' || isHardMode(G.mode)) || !G.no || G.retry || UNLOCK_API.includes('REPLACE_ME')) return;
   try {
     const r = await unlockApi('/lb/submit', { day: G.no, mode: G.mode, wp: G.done.wp.toFixed(4), token: playerToken() });
     if (r && r.ok && r.n) showLeaderboard(r);
@@ -1550,7 +1554,7 @@ function coachSnaps(sc) {
 // Trophies. A Saban is a perfect game: every snap the best call, at least five snaps, and you beat the coach.
 // A Cignetti is every snap green or yellow with at least 60% best calls, and you beat the coach. Rare on purpose.
 function judgeTrophy() {
-  if (!G.done || !G.snaps.length || G.mode === 'practice' || G.mode === 'survival') return null;
+  if (!G.done || !G.snaps.length || G.mode === 'practice' || G.mode === 'survival' || G.retry) return null;
   // judged on the cliff whatever curve the screen used: the exact best call is green, 3 points off is red
   const cliff = DIFF.saban, gapOf = s => s.gap != null ? s.gap : (s.e === '🟩' ? 0 : s.e === '🟨' ? .02 : .05);
   const n = G.snaps.length, greens = G.snaps.filter(s => gapOf(s) <= cliff.green).length, reds = G.snaps.filter(s => gapOf(s) > cliff.yellow).length;
@@ -1589,7 +1593,7 @@ function shareText() {
   const sc = G.sc, d = G.done, gl = gameLabel(sc), saban = isHardMode(G.mode);
   const verdict = d.wp - sc.cwp > 0.02 ? `I beat ${sc.coach}` : Math.abs(d.wp - sc.cwp) <= 0.02 ? `Dead even with ${sc.coach}` : `${sc.coach} got me`;
   const surv = G.mode === 'survival' && d.surv ? `\nSurvival · ${d.surv.won ? `survived round ${d.surv.round}` : `run over after ${d.surv.streak}`}` : '';
-  return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}${d.trophy ? ` · ${TROPHY[d.trophy].stamp}` : ''}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no && G.mode !== 'survival' ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}${surv}\n${G.grades.join('')}\nncaa2mindrill.com`;
+  return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}${d.trophy ? ` · ${TROPHY[d.trophy].stamp}` : ''}${G.retry ? ' (retry)' : ''}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no && G.mode !== 'survival' ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}${surv}\n${G.grades.join('')}\nncaa2mindrill.com`;
 }
 // 1200x630 share card (the size X, Facebook and iMessage previews use)
 function drawShareCard(cv) {
@@ -1658,6 +1662,7 @@ function renderFinal() {
     <div class="eyebrow" style="text-align:center">${esc(gl.when)} · ${esc(gl.title)}</div>
     <div class="finalscore"><div class="fs"><span class="chip" style="background:${off.color}"></span><b>${esc(off.abbr)}</b><em>${d.os}</em></div><div class="fsmid"><div class="gl">After your drive</div><div class="note">${clock(d.T)} left</div></div><div class="fs r"><em>${d.ds}</em><b>${esc(def.abbr)}</b><span class="chip" style="background:${def.color}"></span></div></div>
     <h2 class="verdict">${esc(verdict)}</h2>
+    ${G.retry ? `<div class="eyebrow" style="text-align:center;color:var(--muted)">Retry${G.attempt ? ' · attempt ' + G.attempt : ''} · does not count. Your first attempt stands${G.firstWp != null ? ` at ${pct(G.firstWp)}` : ''}.</div>` : ''}
     ${survivalHTML()}
     ${d.trophy ? `<div class="trophy ${d.trophy}"><div class="who">Awarded</div><div class="big">${esc(TROPHY[d.trophy].label)}</div><div class="end">${esc(TROPHY[d.trophy].line)}</div></div>` : ''}
     ${giftHTML()}
@@ -1681,6 +1686,7 @@ function renderFinal() {
         <a class="cta ghost" id="shareDl" download="ncaa2mindrill-${G.no || sc.id}.png" href="#">Save image</a>
       </div>
       ${G.mode === 'practice' ? '<div class="row"><button class="cta ghost" id="again">Replay this drive</button></div>' : ''}
+      ${G.mode === 'daily' || isHardMode(G.mode) ? `<div class="row"><button class="cta ghost" id="retry">${G.retry ? 'Retry again' : 'Retry this drive'}</button></div><div class="note" style="text-align:center">Retries are for pride. The record, the leaderboard and the trophies keep your first attempt.</div>` : ''}
     </div>
     ${G.mode === 'survival' && d.surv ? `<div class="row">${d.surv.won ? '<button class="cta" id="survNext">Next drive · round ' + (d.surv.round + 1) + '</button>' : '<button class="cta" id="survNew">Start a new run</button>'}</div>` : ''}
     <div class="realdrive cmp">
@@ -1695,7 +1701,7 @@ function renderFinal() {
   </section>`;
   drawShareCard($('#shareCanvas'));
   wireGift();
-  if (G.done && (G.mode === 'daily' || isHardMode(G.mode)) && G.no && !UNLOCK_API.includes('REPLACE_ME')) unlockApi('/lb/stats', { day: G.no, mode: G.mode, wp: G.done.wp.toFixed(4) }).then(r => { if (r && r.ok && r.n) showLeaderboard(r); }).catch(() => {});
+  if (G.done && (G.mode === 'daily' || isHardMode(G.mode)) && G.no && !G.retry && !UNLOCK_API.includes('REPLACE_ME')) unlockApi('/lb/stats', { day: G.no, mode: G.mode, wp: G.done.wp.toFixed(4) }).then(r => { if (r && r.ok && r.n) showLeaderboard(r); }).catch(() => {});
   const cached = G.pctl;
   const showPct = wps => {
     const below = wps.filter(w => w < d.wp - 1e-9).length, tie = wps.filter(w => Math.abs(w - d.wp) <= 1e-9).length;
@@ -1727,48 +1733,70 @@ function renderFinal() {
   };
   const dl = $('#shareDl'); dl.onclick = () => { dl.href = $('#shareCanvas').toDataURL('image/png'); };
   const ag = $('#again'); if (ag) ag.onclick = () => { newGame(G.sc0 || sc, G.mode, G.no); renderPlay(); };
-  const sn = $('#survNext'); if (sn) sn.onclick = survNext;
-  const sw = $('#survNew'); if (sw) sw.onclick = survNext;
-  $('#more').onclick = () => { if (G.mode === 'survival') { survView = 'run'; setTab('survival'); return; } if (G.mode === 'saban' || isHard(sc)) pf = { q: '', year: '', kind: 'saban' }; else if (G.mode === 'cignetti' || isCig(sc)) pf = { q: '', year: '', kind: 'cignetti' }; setTab('practice'); };
+  const rt = $('#retry'); if (rt) rt.onclick = () => { // the daily again, off the record
+    const mode = G.mode, no = G.no, first = (store[mode] || {})[no];
+    newGame(G.sc0 || sc, mode, no); G.retry = true; G.attempt = ((first && first.retries) || 0) + 2; G.firstWp = first && first.done ? first.done.wp : null; renderPlay();
+  };
+  const goOn = () => { survKind = G.survKind || 'free'; survNext(); };
+  const sn = $('#survNext'); if (sn) sn.onclick = goOn;
+  const sw = $('#survNew'); if (sw) sw.onclick = goOn;
+  $('#more').onclick = () => { if (G.mode === 'survival') { survHome(G.survKind || 'free'); return; } if (G.mode === 'saban' || isHard(sc)) pf = { q: '', year: '', kind: 'saban' }; else if (G.mode === 'cignetti' || isCig(sc)) pf = { q: '', year: '', kind: 'cignetti' }; setTab('practice'); };
 }
 
 // ---------- survival: win to stay alive ----------
-// Round by round the pool gets harder: regular drives, then the Cignetti shelf (rounds 7-9), then the Saban pool.
-function survState() { return store.survival ||= { best: 0, runs: 0, cur: null }; }
+// Three runs. The free one climbs from regular drives to the Cignetti shelf (rounds 7-9) to the Saban pool (10+).
+// The Cignetti and Saban runs stay inside their own pool, easiest drives first, then harder.
+let survKind = 'free';
+const SURV_KINDS = {
+  free:     { key: 'survival', label: 'Survival', eyebrow: 'Survival', pitch: () => `A random real drive, then another, each one harder. Win the game to stay alive. Lose once and the run is over.<br>Rounds 1–6 are regular drives (45%+ to start, then 35–50%, then 28–40%). Rounds 7–9 come off the Cignetti shelf, 10 and up out of the Saban pool.${premiumUnlocked() ? '' : ' The deep end takes the unlock.'}` },
+  cignetti: { key: 'survCig', label: 'Cignetti survival', eyebrow: 'Cignetti mode · Survival', pitch: () => 'Every drive comes off the Cignetti shelf: 10–25% to win at the start, the friendlier ones first, then the rest. Win the game to stay alive. Lose once and the run is over. Hard, not hopeless, repeatedly.' },
+  saban:    { key: 'survSaban', label: 'Saban survival', eyebrow: 'Saban mode · Survival', pitch: () => 'Every drive comes out of the Saban pool: 10% to win or worse, or two scores down. The attainable end of hopeless, easiest first. Win to stay alive. Nobody is expected to survive two.' },
+};
+function survState(kind = survKind) { const k = (SURV_KINDS[kind] || SURV_KINDS.free).key; return store[k] ||= { best: 0, runs: 0, cur: null }; }
 const SURV_BAND = r => r <= 2 ? [0.45, 1.01] : r <= 4 ? [0.35, 0.50] : r <= 6 ? [0.28, 0.40] : r <= 9 ? [HARD_WP, CIG_WP] : [0, HARD_WP];
-function survPool(round, used) {
-  const [lo, hi] = SURV_BAND(round);
-  let pool = round >= 10 ? D.hard : round >= 7 ? D.cig : D.scen.filter(s => !isHopeless(s) && !isHard(s) && !isCig(s) && s.wp0 > lo && s.wp0 <= hi);
+function survPool(kind, round, used) {
+  let pool;
+  if (kind === 'cignetti' || kind === 'saban') { // the mode's own pool, sorted easiest first, in thirds by round
+    const all = (kind === 'saban' ? D.hard : D.cig).slice().sort((a, b) => b.wp0 - a.wp0), n = all.length;
+    pool = round <= 2 ? all.slice(0, Math.ceil(n * .4)) : round <= 4 ? all.slice(Math.floor(n * .3), Math.ceil(n * .7)) : all.slice(Math.floor(n * .6));
+  } else {
+    const [lo, hi] = SURV_BAND(round);
+    pool = round >= 10 ? D.hard : round >= 7 ? D.cig : D.scen.filter(s => !isHopeless(s) && !isHard(s) && !isCig(s) && s.wp0 > lo && s.wp0 <= hi);
+  }
   const fresh = pool.filter(s => !used.includes(s.id));
   if (fresh.length) return fresh;
   return pool.length ? pool : D.std.filter(s => !isHopeless(s) && !isHard(s) && !isCig(s));
 }
 function survNext() {
-  const S = survState();
+  const kind = survKind, S = survState(kind);
   if (!S.cur || S.cur.over) S.cur = { streak: 0, drives: [], over: false, started: Date.now() };
   const round = S.cur.streak + 1;
-  if (round >= 7 && !premiumUnlocked()) { renderSurvPaywall(round); return; }
+  if (kind === 'free' && round >= 7 && !premiumUnlocked()) { renderSurvPaywall(round); return; }
+  if (kind !== 'free' && !premiumUnlocked()) { renderPaywall(kind); return; }
   let sc = S.cur.next != null ? D.scen[S.cur.next] : null; // the next drive is drawn once, so a reload doesn't reroll it
-  if (!sc || S.cur.drives.some(d => d.sid === sc.id)) { const pool = survPool(round, S.cur.drives.map(d => d.sid)); sc = pool[Math.floor(rand() * pool.length)]; S.cur.next = sc.id; }
+  if (!sc || S.cur.drives.some(d => d.sid === sc.id)) { const pool = survPool(kind, round, S.cur.drives.map(d => d.sid)); sc = pool[Math.floor(rand() * pool.length)]; S.cur.next = sc.id; }
   saveStore();
   showIntro(sc, 'survival', round);
 }
-function showSurvival() {
-  const S = survState(), cur = S.cur, alive = !!(cur && !cur.over);
-  $('#subline').textContent = `Survival · best run ${S.best || 0}`;
+function showSurvival(kind = 'free') {
+  survKind = kind;
+  const K = SURV_KINDS[kind], S = survState(kind), cur = S.cur, alive = !!(cur && !cur.over);
+  $('#subline').textContent = `${K.label} · best run ${S.best || 0}`;
   const done = cur && cur.drives.length ? cur.drives.map(d => `<span class="sd ${d.won ? 'w' : 'l'}" title="Round ${d.round}: ${pct(d.wp)} win chance">${d.won ? '✓' : '✗'}</span>`).join('') : '';
   app.innerHTML = `<section class="intro">
-    <div class="eyebrow">Survival${alive && cur.streak ? ` · ${cur.streak} in a row` : ''}</div>
+    <div class="eyebrow">${esc(K.eyebrow)}${alive && cur.streak ? ` · ${cur.streak} in a row` : ''}</div>
     <h2 class="headline">${alive && cur.streak ? `${cur.streak}<small>drive${cur.streak === 1 ? '' : 's'} survived · round ${cur.streak + 1} is next</small>` : `Win to<small>stay alive</small>`}</h2>
-    <div class="pitch">A random real drive, then another, each one harder. Win the game to stay alive. Lose once and the run is over.<br>Rounds 1–6 are regular drives (45%+ to start, then 35–50%, then 28–40%). Rounds 7–9 come off the Cignetti shelf, 10 and up out of the Saban pool.${premiumUnlocked() ? '' : ' The deep end takes the unlock.'}</div>
+    <div class="pitch">${K.pitch()}</div>
     ${done ? `<div class="survrow" aria-label="This run">${done}</div>` : ''}
     <button class="cta" id="survGo">${alive && cur.streak ? `Round ${cur.streak + 1}` : 'Start a run'}</button>
     ${alive && cur.streak ? `<button class="cta ghost" id="survQuit">Walk away with ${cur.streak}</button>` : ''}
     <div class="fine">Best run: ${S.best || 0} · Runs finished: ${S.runs || 0}. The rest of each game plays out at the model's odds, so a 70% finish survives 7 times in 10. Saved in this browser.</div>
   </section>`;
   $('#survGo').onclick = survNext;
-  const q = $('#survQuit'); if (q) q.onclick = () => { S.runs = (S.runs || 0) + 1; S.cur.over = true; saveStore(); showSurvival(); };
+  const q = $('#survQuit'); if (q) q.onclick = () => { S.runs = (S.runs || 0) + 1; S.cur.over = true; saveStore(); showSurvival(kind); };
 }
+// back to the run's home: the Survival tab, or the hard mode's Survival view
+function survHome(kind) { if (kind === 'cignetti' || kind === 'saban') { hardView[kind] = 'survival'; setTab(kind); } else { survView = 'run'; setTab('survival'); } }
 function renderSurvPaywall(round) {
   renderPaywall('cignetti');
   const e = $('.paywall .eyebrow'); if (e) e.textContent = `Survival · round ${round} · the deep end is locked`;
@@ -1779,11 +1807,11 @@ function survivalHTML() {
   const line = s.won
     ? (d.wp >= 0.999 ? 'Final. You won it on the field.' : `The rest of the game played out and your ${pct(d.wp)} held up.`) + ` ${s.streak} in a row.${s.streak >= 7 ? ' This is the deep end now.' : ''}`
     : (d.wp <= 0.001 ? 'Final. You lost it on the field.' : `The rest of the game played out and your ${pct(d.wp)} did not hold up.`) + ` ${s.streak} drive${s.streak === 1 ? '' : 's'} survived${s.streak > 0 && s.streak >= s.best ? ', which ties or sets your best' : ''}.`;
-  return `<div class="trophy surv ${s.won ? 'alive' : 'dead'}"><div class="who">Survival · round ${s.round}</div><div class="big">${s.won ? 'SURVIVED' : 'RUN OVER'}</div><div class="end">${esc(line)}</div></div>`;
+  return `<div class="trophy surv ${s.won ? 'alive' : 'dead'}"><div class="who">${esc((SURV_KINDS[G.survKind] || SURV_KINDS.free).label)} · round ${s.round}</div><div class="big">${s.won ? 'SURVIVED' : 'RUN OVER'}</div><div class="end">${esc(line)}</div></div>`;
 }
 
 // ---------- hard-mode libraries (replayable; the daily stays under "Today's drive") ----------
-const hardView = { saban: 'today', cignetti: 'today' };
+const hardView = { saban: 'today', cignetti: 'today' }; // 'today' | 'survival' | 'library'
 const libFilter = { saban: { q: '', year: '' }, cignetti: { q: '', year: '' } };
 function renderLibrary(mode) {
   const pool = mode === 'saban' ? D.hard : D.cig, m = HARD_MODES[mode], f = libFilter[mode];
@@ -1804,7 +1832,7 @@ function renderLibrary(mode) {
 }
 
 // ---------- gifts: beat a Saban drive once, unlock a friend ----------
-function giftEligible() { return G.mode === 'saban' && G.done && G.done.wp >= 0.5; }
+function giftEligible() { return G.mode === 'saban' && G.done && G.done.wp >= 0.5 && !G.retry; }
 function giftHTML() {
   if (!giftEligible() || (window.Native && window.Native.isNative)) return '';
   const owner = webUnlockCode(); if (!owner) return '';
@@ -1895,7 +1923,8 @@ function showStats() {
   $('#statsBody').innerHTML = `<div><b>${days.length}</b><span>Played</span></div><div><b>${beat}</b><span>Beat the coach</span></div><div><b>${streak}</b><span>Day streak</span></div><div><b>${days.length ? (avg >= 0 ? '+' : '') + Math.round(avg * 100) : '–'}</b><span>Avg vs coach</span></div>` +
     `<div><b>${sab.length}</b><span>Saban drives</span></div><div><b>${sabWon}</b><span>Saban wins (50%+)</span></div><div><b>${cig.length}</b><span>Cignetti drives</span></div><div><b>${cigWon}</b><span>Cignetti wins (50%+)</span></div>` +
     `<div><b>${(store.trophies && store.trophies.saban || []).length}</b><span>Sabans earned</span></div><div><b>${(store.trophies && store.trophies.cignetti || []).length}</b><span>Cignettis earned</span></div>` +
-    `<div><b>${survState().best || 0}</b><span>Survival best run</span></div><div><b>${survState().runs || 0}</b><span>Survival runs</span></div>` +
+    `<div><b>${survState('free').best || 0}</b><span>Survival best run</span></div><div><b>${survState('free').runs || 0}</b><span>Survival runs</span></div>` +
+    `<div><b>${survState('cignetti').best || 0}</b><span>Cignetti survival best</span></div><div><b>${survState('saban').best || 0}</b><span>Saban survival best</span></div>` +
     `<div style="grid-column:span 2" class="note">A Saban is a perfect game: every call the best one, and you beat the coach. A Cignetti: no wrong calls, mostly right ones. Both rare on purpose.</div>`;
   $('#statsNote').textContent = days.length ? 'Saved in this browser only.' : 'Finish today\'s drive to start your record. Saved in this browser only.';
   $('#statsDlg').showModal();
