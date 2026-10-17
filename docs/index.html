@@ -152,6 +152,10 @@ code.code { font-family: ui-monospace, Consolas, monospace; background: var(--pa
 .lineup { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .pl { display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px 3px 3px; font-size: 13px; }
 .pl .n { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-family: var(--f-ui); font-weight: 700; font-size: 12px; }
+button.pl { font: inherit; font-size: 13px; color: var(--chalk); cursor: default; }
+button.pl.can { cursor: pointer; }
+button.pl.can:hover { border-color: var(--amber); }
+button.pl.can::after { content: '⇄'; color: var(--muted); font-size: 12px; margin-left: 2px; }
 .pl .ps { color: var(--muted); font-family: var(--f-ui); font-size: 11px; letter-spacing: .08em; }
 
 .side { display: grid; gap: 14px; min-width: 0; }
@@ -344,6 +348,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
     <li><b>Manage the clock.</b> College rules: the clock stops on incompletions, out of bounds, and briefly on first downs inside the final two minutes. Burn a timeout when the clock is running.</li>
     <li><b>Beat the real coach.</b> When your drive ends, your win chance is compared with what the real head coach got. Daily and Survival grade you on the same curve he gets. Cignetti tightens it. Saban is a cliff.</li>
     <li><b>Pick your personnel.</b> 10, 11, 12, 13, 21 or 22: backs, tight ends, receivers. Heavy groups block and pull the defense in; four wide spreads it out. When you sub, the defense subs too.</li>
+    <li><b>Bench anyone.</b> Tap a player chip under the field to swap in a backup at that spot, including the backup quarterback. His season numbers come with him.</li>
     <li><b>Survival.</b> A random drive, then a harder one, then a harder one. Win the game to stay alive; lose once and the run is over. Rounds 7 and up are Cignetti and Saban drives.</li>
     <li><b>Saban mode.</b> A second daily drive from the hopeless end of the pool: 10% to win or worse, or two scores down. Nobody is expected to win these.</li>
     <li><b>Cignetti mode.</b> One shelf up: 10–25% to win. Hard, not hopeless. Google yourself afterward.</li>
@@ -380,7 +385,7 @@ window.ADS = { gtag: '', meta: '', x: '', xEvents: { purchase: '', lead: '' } };
 <script src="native.js?v=2"></script>
 <script src="sound.js?v=1"></script>
 <script src="anim.js?v=10"></script>
-<script src="app.js?v=26"></script>
+<script src="app.js?v=27"></script>
 
 </body>
 </html>

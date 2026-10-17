@@ -180,14 +180,7 @@ def rating(year, tid):
     return r
 
 
-# player season stats
-# position by (team, name): taken from the ESPN participant columns where present
-pos_rows = []
-for nm, ps_ in (('target_player', 'position_target'), ('rush_player', 'position_rush')):
-    d_ = sc[[nm, ps_, 'off_id']].dropna()
-    pos_rows.append(d_.rename(columns={nm: 'name', ps_: 'pos'}))
-pos_df = pd.concat(pos_rows)
-POS = pos_df.groupby(['off_id', 'name']).pos.agg(lambda x: x.value_counts().index[0]).to_dict()
+# player season stats come after the name clean-up below (the play text leaks formation strings into player names)
 # jersey numbers from game rosters
 JERSEY = {}
 # game rosters by position (ESPN position ids: 1 WR, 7 TE, 8 QB, 9 RB), so a grouping like 13 personnel can be
@@ -202,6 +195,52 @@ for y in YEARS:
     ro = ro[['team_id', 'full_name', 'jersey']].dropna().drop_duplicates(['team_id', 'full_name'], keep='last')
     for r in ro.itertuples(index=False):
         JERSEY[(y, int(r.team_id), r.full_name)] = str(r.jersey)
+
+def nkey(name):
+    """'Jeremiyah Love Jr.' -> 'j love' so roster and play-by-play spellings line up."""
+    parts = [x for x in re.sub(r'[^a-z ]', '', str(name).lower().replace('.', ' ')).split() if x not in ('jr', 'sr', 'ii', 'iii', 'iv')]
+    return f'{parts[0][0]} {parts[-1]}' if len(parts) >= 2 else ' '.join(parts)
+
+
+JERSEY2 = {}
+ROSTER_FULL = {}  # (year, tid, nkey) -> the roster's full name, so "M.Craver" and "Malachi Craver" are one player
+for (y, tid, name), j in JERSEY.items():
+    JERSEY2.setdefault((y, tid, nkey(name)), j)
+    ROSTER_FULL.setdefault((y, tid, nkey(name)), name)
+
+# The play text leaks into player names in some games: "No Huddle-Shotgun #10 M.Reed", "#1 M.Craver caught at 28",
+# "steps back to pass. D.Hopkins". Strip the formation and the tail, then map to the roster's spelling of the name.
+NAME_JUNK = re.compile(r'^.*?#\d+\s+|^.*?(?:steps back to pass|shotgun|huddle)\W*', re.I)
+NAME_TAIL = re.compile(r'\s+(?:caught at|thrown to|at the|at|to the|to|for|pass|rush|run|sacked|fumble)\b.*$', re.I)
+
+
+def clean_name(n_):
+    if not isinstance(n_, str):
+        return n_
+    s = NAME_TAIL.sub('', NAME_JUNK.sub('', n_)).strip(' .,()')
+    return s or n_
+
+
+def canon_cols(df):
+    tid = df.pos_team.map(team_name_to_id)
+    for col in ('passer_player_name', 'receiver_player_name', 'rush_player', 'target_player', 'rusher_player_name'):
+        if col not in df.columns:
+            continue
+        cleaned = df[col].map(clean_name)
+        df[col] = [ROSTER_FULL.get((yy, tt, nkey(c)), c) if isinstance(c, str) and not pd.isna(tt) else c
+                   for yy, tt, c in zip(df.year, tid, cleaned)]
+
+
+canon_cols(p)
+canon_cols(sc)
+
+# position by (team, name): taken from the ESPN participant columns where present
+pos_rows = []
+for nm, ps_ in (('target_player', 'position_target'), ('rush_player', 'position_rush')):
+    d_ = sc[[nm, ps_, 'off_id']].dropna()
+    pos_rows.append(d_.rename(columns={nm: 'name', ps_: 'pos'}))
+pos_df = pd.concat(pos_rows)
+POS = pos_df.groupby(['off_id', 'name']).pos.agg(lambda x: x.value_counts().index[0]).to_dict()
 
 tg = sc[sc.is_passplay & sc.receiver_player_name.notna()].copy()
 tg['pos'] = [POS.get((o, n), 'WR') for o, n in zip(tg.off_id, tg.receiver_player_name)]
@@ -223,19 +262,13 @@ RUS_IDX = set(rus.index.droplevel(2))
 QB_IDX = set(qbs.index.droplevel(2))
 
 
-def nkey(name):
-    """'Jeremiyah Love Jr.' -> 'j love' so roster and play-by-play spellings line up."""
-    parts = [x for x in re.sub(r'[^a-z ]', '', str(name).lower().replace('.', ' ')).split() if x not in ('jr', 'sr', 'ii', 'iii', 'iv')]
-    return f'{parts[0][0]} {parts[-1]}' if len(parts) >= 2 else ' '.join(parts)
-
-
-JERSEY2 = {}
-for (y, tid, name), j in JERSEY.items():
-    JERSEY2.setdefault((y, tid, nkey(name)), j)
-
-
 def num(year, tid, name):
     return JERSEY.get((year, tid, name)) or JERSEY2.get((year, tid, nkey(name)), '')
+
+
+def valid_name(n_):
+    """A player, not a leftover of the play text ('Pass', '20', 'J.Willis QB hurried by #9 D.Manuel')."""
+    return isinstance(n_, str) and len(n_) >= 3 and not re.search(r'\d|#| by |declined|hurried|penalty', n_, re.I) and n_.lower() not in ('pass', 'rush', 'run', 'team')
 
 
 def lineup(year, tid, gid):
@@ -243,20 +276,38 @@ def lineup(year, tid, gid):
     gp = p[(p.game_id == gid) & (p.pos_team.map(team_name_to_id) == tid)]
     out = {}
     q = qbs.loc[(year, tid)] if (year, tid) in QB_IDX else None
+    if q is not None:
+        q = q[q.index.map(valid_name)]
     gq = gp.passer_player_name.value_counts()
+    gq = gq[gq.index.map(valid_name)]
     qname = gq.index[0] if len(gq) else (q.n.idxmax() if q is not None else 'QB')
-    if q is not None and qname in q.index:
-        r = q.loc[qname]
-        lq = sc[sc.kind == 'pass'].EPA.mean()
-        out['qb'] = dict(name=qname, num=num(year, tid, qname), epa=round(r.epa, 2), n=int(r.n), int=round(r.ints, 3),
-                         sack=round(r.sacks, 3), adj=round(shrink(r.epa, r.n, lq, 80) - lq, 3))
-    else:
-        out['qb'] = dict(name=qname, num='', epa=0, n=0, int=round(lg_int, 3), sack=round(lg_sack, 3), adj=0)
+    lq = sc[sc.kind == 'pass'].EPA.mean()
+
+    def qb_dict(name):
+        if q is not None and name in q.index:
+            r = q.loc[name]
+            return dict(name=name, num=num(year, tid, name), epa=round(r.epa, 2), n=int(r.n), int=round(r.ints, 3),
+                        sack=round(r.sacks, 3), adj=round(shrink(r.epa, r.n, lq, 80) - lq, 3))
+        return dict(name=name, num=num(year, tid, name), epa=0, n=0, int=round(lg_int, 3), sack=round(lg_sack, 3), adj=0)
+    out['qb'] = qb_dict(qname)
+    # the backup quarterback: the other passer in this game, else the season's second by attempts, else the roster's.
+    # The play text leaks formation strings into passer names ("Huddle-Shotgun #6 T.Chambliss"), so a backup has to be
+    # a real roster name (a jersey number resolves) and not the starter under another spelling.
+    def good_qb(n_):
+        return isinstance(n_, str) and '#' not in n_ and not re.search(r'\d', n_) and nkey(n_) != nkey(qname) and num(year, tid, n_) != ''
+    others = [n_ for n_ in gq.index if good_qb(n_)]
+    if not others and q is not None:
+        others = [n_ for n_ in q.sort_values('n', ascending=False).index if good_qb(n_)]
+    if not others:
+        others = [n_ for n_, rp in RGAME.get((int(gid), int(tid)), []) if rp == 'QB' and nkey(n_) != nkey(qname)]
+    out['qb2'] = qb_dict(others[0]) if others else None
     recs = rec.loc[(year, tid)] if (year, tid) in REC_IDX else pd.DataFrame()
+    if len(recs):
+        recs = recs[recs.index.map(valid_name)]
     in_game = set(gp.receiver_player_name.dropna()) | set(gp.rush_player.dropna())
-    # a deep enough skill group for every personnel grouping (10 through 22): 4 WR, 3 TE, 2 RB
+    # a deep enough skill group for every personnel grouping (10 through 22) plus a bench: 5 WR, 3 TE, 3 RB
     picks = []
-    for pos, k in (('WR', 4), ('TE', 3), ('RB', 2)):
+    for pos, k in (('WR', 5), ('TE', 3), ('RB', 3)):
         if not len(recs):
             break
         sub = recs[(recs.pos == pos) & recs.index.isin(in_game)].sort_values('n', ascending=False).head(k)
@@ -269,13 +320,13 @@ def lineup(year, tid, gid):
     rr = rus.loc[(year, tid)] if (year, tid) in RUS_IDX else pd.DataFrame()
     # a second back who never got a target still exists: take him from the rushing table with league receiving numbers
     have_rb = [x['name'] for x in picks if x['pos'] == 'RB']
-    if len(rr) and len(have_rb) < 2:
-        extra = rr[(rr.pos == 'RB') & ~rr.index.isin(have_rb)].sort_values('n', ascending=False).head(2 - len(have_rb))
+    if len(rr) and len(have_rb) < 3:
+        extra = rr[(rr.pos == 'RB') & ~rr.index.isin(have_rb)].sort_values('n', ascending=False).head(3 - len(have_rb))
         for name, r in extra.iterrows():
             picks.append(dict(name=name, num=num(year, tid, name), pos='RB', n=0, c=round(LG_RB_C, 2), yds=round(LG_RB_YDS, 1), adj=0))
     # still short? the game roster has the bodies (no season numbers: league-average hands, no rating)
     have = {x['name'] for x in picks}
-    for pos, k in (('WR', 4), ('TE', 3), ('RB', 2)):
+    for pos, k in (('WR', 5), ('TE', 3), ('RB', 3)):
         short_by = k - sum(1 for x in picks if x['pos'] == pos)
         for name, rp in RGAME.get((int(gid), int(tid)), []):
             if short_by <= 0:
@@ -284,13 +335,18 @@ def lineup(year, tid, gid):
                 continue
             have.add(name); short_by -= 1
             picks.append(dict(name=name, num=num(year, tid, name), pos=pos, n=0, c=round(LG_C.get(pos, 0.6), 2), yds=round(LG_YDS.get(pos, 8.0), 1), adj=0))
+    # every back carries his rushing line too, so a benched starter's replacement has a rating as a runner
+    lgr = ru[ru.position_rush == 'RB'].EPA.mean()
+    for x in picks:
+        if x['pos'] == 'RB' and len(rr) and x['name'] in rr.index:
+            r = rr.loc[x['name']]
+            x['rn'] = int(r.n); x['ypc'] = round(r.yds, 1); x['radj'] = round(shrink(r.epa, r.n, lgr, 60) - lgr, 3)
     out['rec'] = picks
     rb = rr[(rr.pos == 'RB') & rr.index.isin(in_game)].sort_values('n', ascending=False) if len(rr) else rr
     if len(rr) and not len(rb):
         rb = rr[rr.pos == 'RB'].sort_values('n', ascending=False)
     if len(rr) and len(rb):
         name, r = next(rb.iterrows())
-        lgr = ru[ru.position_rush == 'RB'].EPA.mean()
         out['rb'] = dict(name=name, num=num(year, tid, name), n=int(r.n), ypc=round(r.yds, 1),
                          adj=round(shrink(r.epa, r.n, lgr, 60) - lgr, 3))
     else:

@@ -673,9 +673,10 @@ function unlockCodeNote() {
 
 // ---------- game state ----------
 let G = null; // current game
-function newGame(sc, mode, no) {
+function newGame(sc0, mode, no) {
+  const sc = { ...sc0, lineup: JSON.parse(JSON.stringify(sc0.lineup)) }; // this game's own copy of the lineup: benching never touches the data
   G = {
-    mode, no, sc, log: [], grades: [], snaps: [],
+    mode, no, sc, sc0, subs: [], log: [], grades: [], snaps: [],
     st: { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0 },
     useTO: false, tempo: 'neutral', picking: null, pickerSlot: null, last: null, busy: false, done: null, routes: { ...DEFAULT_ROUTES }, mods: {}, runSide: 'R', aim: null, twoPt: null,
     pers: persAvailable(sc, store.pers || '11') ? (store.pers || '11') : '11',
@@ -802,11 +803,47 @@ function bug(st, sc) {
 }
 function lineupHTML(sc) {
   const off = T_(sc.off), L = sc.lineup;
-  const chip = (num, name, pos) => `<span class="pl"><span class="n" style="background:${off.color};color:${off.alt}">${esc(num || '–')}</span>${esc(short(name))} <span class="ps">${pos}</span></span>`;
+  // every offensive chip is a button when someone on the bench can take that spot
+  const chip = (num, name, pos, key) => `<button class="pl ${key ? 'can' : ''}" ${key ? `data-bench="${key}" title="Bench ${esc(short(name))}"` : 'disabled'}><span class="n" style="background:${off.color};color:${off.alt}">${esc(num || '–')}</span>${esc(short(name))} <span class="ps">${pos}</span></button>`;
   const def = T_(sc.dfn), dl = (sc.dlineup || []).slice(0, 4);
   const dchip = x => `<span class="pl" title="${x.tk} tackles${x.sk ? ', ' + x.sk + ' sacks' : ''}${x.pbu ? ', ' + x.pbu + ' PBU' : ''}${x.int ? ', ' + x.int + ' INT' : ''}"><span class="n" style="background:${def.alt};color:${def.color};border:2px solid ${def.color}">${esc(x.num)}</span>${esc(x.name)} <span class="ps">${x.role}</span></span>`;
   const R = receivers(sc); // the group on the field for the chosen personnel
-  return `<div class="lineup">${chip(L.qb.num, L.qb.name, 'QB')}${R.filter(r => r.pos === 'RB').map(r => chip(r.num, r.name, r.slot === 'RB2' ? 'FB' : 'RB')).join('')}${R.filter(r => r.pos !== 'RB').map(r => chip(r.num, r.name, r.pos)).join('')}${dl.length ? `<span class="gl" style="align-self:center">vs</span>${dl.map(dchip).join('')}` : ''}</div>`;
+  const can = key => benchOptions(key).length ? key : null;
+  return `<div class="lineup">${chip(L.qb.num, L.qb.name, 'QB', can('QB'))}${R.filter(r => r.pos === 'RB').map(r => chip(r.num, r.name, r.slot === 'RB2' ? 'FB' : 'RB', can(r.slot))).join('')}${R.filter(r => r.pos !== 'RB').map(r => chip(r.num, r.name, r.pos, can(r.slot))).join('')}${dl.length ? `<span class="gl" style="align-self:center">vs</span>${dl.map(dchip).join('')}` : ''}</div>`;
+}
+// ---------- the bench ----------
+// Who could take a spot: the backup quarterback, or anyone on the bench at the same position. The lineup is this
+// game's own copy, so a sub lasts the drive and the data stays untouched. Season numbers follow the player.
+function benchOptions(key) {
+  if (!G) return [];
+  const L = G.sc.lineup, R = receivers(G.sc), onField = new Set(R.map(r => r.name));
+  if (key === 'QB') return L.qb2 ? [L.qb2] : [];
+  const slot = R.find(r => r.slot === key); if (!slot) return [];
+  return L.rec.filter(r => r.pos === slot.pos && !onField.has(r.name));
+}
+function benchPlayer(key, name) {
+  const L = G.sc.lineup, sit = clock(G.st.T);
+  let outName, inName;
+  if (key === 'QB') {
+    if (!L.qb2 || L.qb2.name !== name) return;
+    const was = L.qb; L.qb = L.qb2; L.qb2 = was; outName = was.name; inName = L.qb.name;
+  } else {
+    const R = receivers(G.sc), slot = R.find(r => r.slot === key); if (!slot) return;
+    const i = L.rec.findIndex(r => r.name === slot.name), j = L.rec.findIndex(r => r.name === name);
+    if (i < 0 || j < 0) return;
+    [L.rec[i], L.rec[j]] = [L.rec[j], L.rec[i]];
+    outName = slot.name; inName = name;
+    if (key === 'RB') { const c = L.rec[i]; L.rb = { name: c.name, num: c.num, n: c.rn || 0, ypc: c.ypc || 4.5, adj: c.radj || 0 }; } // the new lead back carries the ball
+  }
+  const where = key === 'RB2' ? 'FB' : key.replace(/\d/, '');
+  G.subs.push({ out: outName, in: inName, pos: where });
+  G.log.push({ sit, text: `Sub: ${short(inName)} in for ${short(outName)} at ${where}.` });
+  G.picking = null; G.pickerSlot = null; G.benchKey = null; renderPlay();
+}
+function benchLine(key, r) {
+  if (key === 'QB') return `${r.n} dropbacks · ${r.adj >= 0 ? 'above' : 'below'} league by ${Math.abs(r.adj).toFixed(2)} EPA per play · sacked ${(r.sack * 100).toFixed(1)}% · picked ${(r.int * 100).toFixed(1)}%`;
+  const rec = r.n ? `${Math.round(r.c * 100)}% caught · ${Number(r.yds).toFixed(1)} yds per target · ${r.n} targets` : 'no targets this season · league-average hands';
+  return rec + (r.rn ? ` · ${r.ypc} per carry on ${r.rn} carries` : r.pos === 'RB' ? ' · no carries on record' : '');
 }
 
 // ---------- screens ----------
@@ -900,6 +937,7 @@ function renderPlay() {
   renderSide();
   if (G.anim) { const a = G.anim; requestAnimationFrame(() => requestAnimationFrame(() => { const b = $('#ball'); if (b) b.style.transform = `translate(${100 + (100 - a.to) * 10}px, ${a.y}px)`; })); }
   $('#field').querySelectorAll('[data-rec]').forEach(g => g.onclick = () => cycleRoute(g.dataset.rec));
+  if (!G.animating && !G.busy && !G.done) app.querySelectorAll('[data-bench]').forEach(b => b.onclick = () => { G.benchKey = b.dataset.bench; G.picking = 'bench'; G.pickerSlot = null; G.aim = null; renderPlay(); });
   if (G.picking === 'run' && !G.animating) {
     const svg = $('#field svg');
     svg.style.cursor = 'crosshair';
@@ -981,6 +1019,19 @@ function renderSide() {
     side.querySelectorAll('[data-set]').forEach(b => b.onclick = () => { const [slot, k] = b.dataset.set.split(':'); G.routes[slot] = k; G.pickerSlot = null; renderPlay(); });
     side.querySelectorAll('[data-tgt]').forEach(b => b.onclick = () => { const r = recs.find(x => x.slot === b.dataset.tgt); runPlay(ROUTES[routeFor(r)].id, r, { ...G.mods, route: routeFor(r), blockers: nb }); });
     side.querySelectorAll('[data-call]').forEach(b => b.onclick = () => runPlay(b.dataset.call, null, { ...G.mods, blockers: nb }));
+    return;
+  }
+  if (G.picking === 'bench' && G.benchKey) {
+    const key = G.benchKey, L = sc.lineup, R = receivers(sc);
+    const cur = key === 'QB' ? L.qb : R.find(r => r.slot === key);
+    const opts = benchOptions(key), where = key === 'RB2' ? 'fullback' : key.replace(/\d/, '');
+    h += `<div class="grp"><div class="h">Bench ${esc(short(cur ? cur.name : ''))} <button class="back" id="back">◀ Back</button></div>
+      <div class="note">${key === 'QB' ? 'The backup takes every snap from here. His season numbers drive every throw.' : `Who comes in at ${esc(where)}? His season numbers decide how the ball finds him.`}</div>
+      <div class="calls">${opts.map(r => `<button class="call" data-sub="${esc(r.name)}"><b>${esc(r.num ? '#' + r.num + ' ' : '')}${esc(short(r.name))}</b><small>${esc(benchLine(key, r))}</small></button>`).join('') || '<div class="note">Nobody else on the roster at this spot.</div>'}</div>
+      ${cur ? `<div class="note">Now: ${esc(short(cur.name))} · ${esc(benchLine(key, cur))}</div>` : ''}</div>`;
+    side.innerHTML = h;
+    $('#back').onclick = () => { G.picking = null; G.benchKey = null; renderPlay(); };
+    side.querySelectorAll('[data-sub]').forEach(b => b.onclick = () => benchPlayer(key, b.dataset.sub));
     return;
   }
   if (G.picking === 'trick') {
@@ -1513,12 +1564,13 @@ const TROPHY = {
   cignetti: { label: 'A Cignetti', line: 'No wrong calls, mostly right ones, and you beat the coach. Google yourself.', stamp: 'CIGNETTI GAME' },
 };
 function comparison(sc) {
-  const mine = G.snaps, theirs = coachSnaps(sc);
+  const mine = G.snaps, theirs = coachSnaps(G.sc0 || sc); // the coach is graded with the lineup he actually had
   const count = (arr, k) => arr.filter(s => s.kind === k).length;
   const theirPlays = theirs.filter(s => s.wpBefore != null);
   const myBest = mine.filter(s => s.e === '🟩').length, myGraded = mine.length;
   const cGraded = theirPlays.filter(s => s.e), cBest = cGraded.filter(s => s.e === '🟩').length;
-  const summary = `<div><b>You</b>: ${count(mine, 'pass')} pass${count(mine, 'pass') === 1 ? '' : 'es'}, ${count(mine, 'run')} run${count(mine, 'run') === 1 ? '' : 's'}${count(mine, 'spike') ? `, ${count(mine, 'spike')} spike` : ''}${count(mine, 'fg') ? ', a field goal try' : ''} · ${G.done.snaps} snaps · ended with ${clock(G.done.T)} left</div>
+  const subs = (G.subs || []).length;
+  const summary = `<div><b>You</b>: ${count(mine, 'pass')} pass${count(mine, 'pass') === 1 ? '' : 'es'}, ${count(mine, 'run')} run${count(mine, 'run') === 1 ? '' : 's'}${count(mine, 'spike') ? `, ${count(mine, 'spike')} spike` : ''}${count(mine, 'fg') ? ', a field goal try' : ''}${subs ? `, ${subs} sub${subs === 1 ? '' : 's'}` : ''} · ${G.done.snaps} snaps · ended with ${clock(G.done.T)} left</div>
     <div><b>${esc(sc.coach)}</b>: ${count(theirPlays, 'pass')} pass${count(theirPlays, 'pass') === 1 ? '' : 'es'}, ${count(theirPlays, 'run')} run${count(theirPlays, 'run') === 1 ? '' : 's'}${count(theirs, 'timeout') ? `, ${count(theirs, 'timeout')} timeout${count(theirs, 'timeout') > 1 ? 's' : ''}` : ''}${count(theirPlays, 'fg') ? ', a field goal try' : ''} · ${theirPlays.length} snaps · ${esc(resultWord(sc).toLowerCase())}</div>
     <div class="scoreline"><b>Best call on the board:</b> you ${myBest} of ${myGraded}${cGraded.length ? ` · ${esc(sc.coach)} ${cBest} of ${cGraded.length}` : ''}. <span class="muted">${esc(diffFor().curve)}</span></div>`;
   const n = Math.max(mine.length, theirs.length);
@@ -1674,7 +1726,7 @@ function renderFinal() {
     toast('Text copied. Use Save image for the card.');
   };
   const dl = $('#shareDl'); dl.onclick = () => { dl.href = $('#shareCanvas').toDataURL('image/png'); };
-  const ag = $('#again'); if (ag) ag.onclick = () => { newGame(sc, G.mode, G.no); renderPlay(); };
+  const ag = $('#again'); if (ag) ag.onclick = () => { newGame(G.sc0 || sc, G.mode, G.no); renderPlay(); };
   const sn = $('#survNext'); if (sn) sn.onclick = survNext;
   const sw = $('#survNew'); if (sw) sw.onclick = survNext;
   $('#more').onclick = () => { if (G.mode === 'survival') { survView = 'run'; setTab('survival'); return; } if (G.mode === 'saban' || isHard(sc)) pf = { q: '', year: '', kind: 'saban' }; else if (G.mode === 'cignetti' || isCig(sc)) pf = { q: '', year: '', kind: 'cignetti' }; setTab('practice'); };
