@@ -366,8 +366,10 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
 // Ad-platform tags. Paste the ids once the ad accounts exist; nothing loads while they are blank.
 // gtag: the Google Ads tag ("AW-123456789") or a GA4 id ("G-XXXXXXX"); meta: the Meta Pixel id; x: the X Pixel id;
 // xEvents: the X event ids for a purchase and a lead (X needs one per event).
-window.ADS = { gtag: '', meta: '', x: '', xEvents: { purchase: '', lead: '' } };
+window.ADS = { gtag: '', meta: '1054087884349992', x: '', xEvents: { purchase: '', lead: '' } };
 (function (A) {
+  // only on the real site: never inside the app (Capacitor) or a local preview
+  if (!/(^|\.)ncaa2mindrill\.com$/.test(location.hostname)) { A.gtag = A.meta = A.x = ''; return; }
   if (A.gtag) {
     const s = document.createElement('script'); s.async = true; s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(A.gtag); document.head.appendChild(s);
     window.dataLayer = window.dataLayer || []; window.gtag = function () { window.dataLayer.push(arguments); }; window.gtag('js', new Date()); window.gtag('config', A.gtag);

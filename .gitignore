@@ -9,3 +9,4 @@ app/dist/
 unlock-worker/.wrangler/
 .wrangler/
 build/featured.json
+marketing/*.zip
