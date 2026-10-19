@@ -7,9 +7,9 @@ The existing drives keep their ids and order, so no past or upcoming daily chang
 win-probability model, so player and coach are judged by the same numbers. D.featured maps a local date to a drive.
 Running it again with the same game replaces that drive in place instead of adding a copy.
 """
-import json, math, sys
+import json, math, os, sys
 
-DATA = 'C:/Users/pmcin/cfb-2min-drill/docs/data.json'
+DATA = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'data.json'))  # this checkout's site
 
 
 def clamp(x, a, b):
