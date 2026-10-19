@@ -1648,47 +1648,45 @@ function shareText() {
 }
 // 1200x630 share card (the size X, Facebook and iMessage previews use)
 function drawShareCard(cv) {
+  // clean on purpose: the verdict, the two numbers, the grade row, the URL. Nothing else.
   const sc = G.sc, d = G.done, gl = gameLabel(sc), off = T_(sc.off), def = T_(sc.dfn), saban = G.mode === 'saban', cig = G.mode === 'cignetti';
   const c = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const UI = '"Saira Condensed", "Arial Narrow", sans-serif';
   c.fillStyle = saban ? '#160c0c' : cig ? '#14120a' : '#0c1420'; c.fillRect(0, 0, W, H);
   // turf stripe and team color rails
-  c.fillStyle = '#2f6b3a'; c.fillRect(0, H - 70, W, 70);
-  c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 2; for (let x = 60; x < W; x += 100) { c.beginPath(); c.moveTo(x, H - 70); c.lineTo(x, H); c.stroke(); }
-  c.fillStyle = off.color; c.fillRect(0, 0, 18, H - 70); c.fillStyle = def.color; c.fillRect(W - 18, 0, 18, H - 70);
+  c.fillStyle = '#2f6b3a'; c.fillRect(0, H - 64, W, 64);
+  c.strokeStyle = 'rgba(255,255,255,.3)'; c.lineWidth = 2; for (let x = 60; x < W; x += 100) { c.beginPath(); c.moveTo(x, H - 64); c.lineTo(x, H); c.stroke(); }
+  c.fillStyle = off.color; c.fillRect(0, 0, 14, H - 64); c.fillStyle = def.color; c.fillRect(W - 14, 0, 14, H - 64);
   const accent = saban ? '#d9433a' : cig ? '#e0b43a' : '#f3b23c';
-  c.textBaseline = 'alphabetic'; c.fillStyle = accent; c.font = '700 26px "Saira Condensed", "Arial Narrow", sans-serif';
-  c.fillText((saban ? 'SABAN MODE · ' : cig ? 'CIGNETTI MODE · ' : 'NCAA TWO-MINUTE DRILL · ') + (G.no ? `NO. ${G.no}` : 'PRACTICE'), 60, 70);
-  c.fillStyle = '#8ea0b8'; c.font = '600 24px "Saira Condensed", "Arial Narrow", sans-serif';
-  c.fillText(`${gl.title.toUpperCase()} · ${gl.when.toUpperCase()}`, 60, 106);
+  c.textBaseline = 'alphabetic';
+  c.fillStyle = accent; c.font = `700 28px ${UI}`;
+  c.fillText((saban ? 'SABAN MODE' : cig ? 'CIGNETTI MODE' : 'NCAA TWO-MINUTE DRILL') + (G.no && G.mode !== 'survival' ? ` · NO. ${G.no}` : ''), 70, 82);
+  c.fillStyle = '#8ea0b8'; c.font = `600 26px ${UI}`;
+  c.fillText(`${gl.title.toUpperCase()} · ${gl.when.toUpperCase()}`, 70, 120);
   const verdict = d.wp - sc.cwp > 0.02 ? `I BEAT ${sc.coach.toUpperCase()}` : Math.abs(d.wp - sc.cwp) <= 0.02 ? `DEAD EVEN WITH ${sc.coach.toUpperCase()}` : `${sc.coach.toUpperCase()} GOT ME`;
-  c.fillStyle = '#eef2f6'; let fs = 86; c.font = `800 ${fs}px "Saira Condensed", "Arial Narrow", sans-serif`;
-  while (c.measureText(verdict).width > W - 120 && fs > 40) { fs -= 4; c.font = `800 ${fs}px "Saira Condensed", "Arial Narrow", sans-serif`; }
-  c.fillText(verdict, 60, 200);
-  // two bars
-  const bar = (y, label, v, color) => {
-    c.fillStyle = '#8ea0b8'; c.font = '600 26px "Saira Condensed", "Arial Narrow", sans-serif'; c.fillText(label.toUpperCase(), 60, y - 14);
-    c.fillStyle = '#1a2a3f'; c.fillRect(60, y, W - 320, 34);
-    c.fillStyle = color; c.fillRect(60, y, (W - 320) * clamp(v, 0.01, 1), 34);
-    c.fillStyle = '#eef2f6'; c.font = '800 54px "Saira Condensed", "Arial Narrow", sans-serif'; c.fillText(pct(v), W - 230, y + 40);
-    c.fillStyle = '#8ea0b8'; c.font = '600 20px "Saira Condensed", "Arial Narrow", sans-serif'; c.fillText('WIN CHANCE', W - 230, y + 66);
+  c.fillStyle = '#eef2f6'; let fs = 96; c.font = `800 ${fs}px ${UI}`;
+  while (c.measureText(verdict).width > W - 160 && fs > 44) { fs -= 4; c.font = `800 ${fs}px ${UI}`; }
+  c.fillText(verdict, 70, 232);
+  // the two numbers
+  const num = (x, label, v, color) => {
+    c.fillStyle = '#8ea0b8'; c.font = `700 30px ${UI}`; c.fillText(label.toUpperCase(), x, 318);
+    c.fillStyle = color; c.font = `800 150px ${UI}`; c.fillText(pct(v), x, 452);
+    c.fillStyle = '#8ea0b8'; c.font = `600 24px ${UI}`; c.fillText('WIN CHANCE', x, 486);
   };
-  bar(262, 'Me', d.wp, accent);
-  bar(372, sc.coach, sc.cwp, '#eef2f6');
-  // grade tiles instead of emoji, so the card renders the same everywhere
-  const tileW = 36, gap = 8; let tx = 60;
-  for (const e of G.grades) { c.fillStyle = e === '🟩' ? '#4cc27a' : e === '🟨' ? '#e9b949' : '#e2574c'; c.beginPath(); c.roundRect ? c.roundRect(tx, 462, tileW, tileW, 6) : c.rect(tx, 462, tileW, tileW); c.fill(); tx += tileW + gap; if (tx > W - 400) break; }
-  c.fillStyle = '#8ea0b8'; c.font = '600 24px "Saira Condensed", "Arial Narrow", sans-serif';
-  const line = G.pctl ? `${G.pctl.p}TH PERCENTILE VS ${G.pctl.n} SIMULATED PLAY-CALLERS` : `${d.desc}`.slice(0, 90).toUpperCase();
-  c.fillText(line, 60, 540);
-  const res2 = resemblance();
-  if (res2) { c.fillStyle = '#eef2f6'; c.font = '700 26px "Saira Condensed", "Arial Narrow", sans-serif'; c.fillText(`CALLS IT LIKE ${res2.best.coach.toUpperCase()} (${res2.best.school.toUpperCase()})`, W - 560, 500); }
+  num(70, 'Me', d.wp, accent);
+  c.fillStyle = '#44597a'; c.font = `800 60px ${UI}`; c.fillText('VS', W / 2 - 44, 420);
+  num(W / 2 + 70, sc.coach.split(' ').slice(-1)[0], sc.cwp, '#eef2f6');
+  // the grades, one tile per call (tiles, not emoji, so the card renders the same everywhere)
+  const n = Math.max(1, G.grades.length), tileW = Math.min(44, (W - 180) / n - 8), gap = Math.min(10, tileW / 4);
+  let tx = 70;
+  for (const e of G.grades) { c.fillStyle = e === '🟩' ? '#4cc27a' : e === '🟨' ? '#e9b949' : '#e2574c'; c.beginPath(); c.roundRect ? c.roundRect(tx, 514, tileW, tileW, 7) : c.rect(tx, 514, tileW, tileW); c.fill(); tx += tileW + gap; }
   if (d.trophy) { // the stamp: rotated, loud, rare
-    c.save(); c.translate(W - 250, 150); c.rotate(-0.18);
+    c.save(); c.translate(W - 240, 120); c.rotate(-0.16);
     c.strokeStyle = d.trophy === 'saban' ? '#d9433a' : '#e0b43a'; c.lineWidth = 6; c.strokeRect(-150, -42, 300, 84);
-    c.fillStyle = c.strokeStyle; c.font = '800 46px "Saira Condensed", "Arial Narrow", sans-serif'; c.textAlign = 'center'; c.fillText(TROPHY[d.trophy].stamp, 0, 16); c.textAlign = 'left'; c.restore();
+    c.fillStyle = c.strokeStyle; c.font = `800 46px ${UI}`; c.textAlign = 'center'; c.fillText(TROPHY[d.trophy].stamp, 0, 16); c.textAlign = 'left'; c.restore();
   }
-  c.fillStyle = '#eef2f6'; c.font = '800 34px "Saira Condensed", "Arial Narrow", sans-serif'; c.textAlign = 'right';
-  c.fillText('NCAA2MINDRILL.COM', W - 50, H - 24); c.textAlign = 'left';
+  c.fillStyle = '#eef2f6'; c.font = `800 36px ${UI}`; c.textAlign = 'right';
+  c.fillText('NCAA2MINDRILL.COM', W - 54, H - 20); c.textAlign = 'left';
 }
 
 function resultWord(sc) {
