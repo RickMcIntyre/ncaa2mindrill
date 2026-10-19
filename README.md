@@ -28,6 +28,8 @@ FEATURE="2026:401858488@03:05" python build.py           # game_id @ the clock o
 python merge_featured.py featured.json 401858488=2026-10-19
 ```
 
+Every Sunday this runs on its own: `build/weekly_featured.py` downloads the season's files, ranks every late drive from Thursday-Saturday's FBS games (4th quarter, 0:20-4:00 left, trailing by 1-16 or tied, a live chance; one per game; weighted by how much the drive swung the game, how wild the game's fourth quarter was, program size by pregame Elo, and go-ahead or last-chance drives), builds the top seven, pins them Sunday through Saturday, commits `docs/data.json` and pushes. `--dry-run` prints the ranking only. Exit 3 means the feed doesn't have the whole Saturday slate yet; exit 2 means this weekend is already pinned. The desktop app's scheduled task "sunday-featured-drives" runs it at 6:30, 8:30, 10:30 and 12:30 on Sundays.
+
 The build writes only those drives (to `build/featured.json`, never the live data). The merge appends them to `docs/data.json` with new ids, re-scores the coach's win chance with the live model, flags them `feat` so they stay out of the daily, Cignetti and Saban rotations, and pins them by local date in `featured`. The intro shows "From Saturday" for a week. Re-running the merge for the same game replaces that drive in place.
 
 Inputs come from SportsDataverse GitHub releases (`cfbfastR_cfb_pbp`, `espn_cfb_coach_tendencies`, `espn_cfb_game_rosters`, `espn_cfb_schedules`, `espn_cfb_teams`). To add a season, download its files into `raw/` with the same names and add the year to `YEARS` in `build.py`.

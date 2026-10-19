@@ -652,7 +652,7 @@ FEAT_DRIVE = {}
 if FEAT:  # the hand-picked drives start at the snap whose play text shows that clock
     picks = []
     for gid_, clk in FEAT:
-        hit = p[(p.game_id == gid_) & p.text.str.startswith(f'({clk})') & (p.is_passplay | p.is_rushplay | p.is_sack)]
+        hit = p[(p.game_id == gid_) & (p.period == 4) & p.text.str.startswith(f'({clk})') & (p.is_passplay | p.is_rushplay | p.is_sack)]
         assert len(hit), f'no snap at {clk} in game {gid_}'
         h0 = hit.iloc[0]
         # the possession runs from that snap until the other team has the ball (drive ids are unreliable on some
