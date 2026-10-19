@@ -1650,78 +1650,80 @@ function shareText() {
   const surv = G.mode === 'survival' && d.surv ? `\nSurvival · ${d.surv.won ? `survived round ${d.surv.round}` : `run over after ${d.surv.streak}`}` : '';
   return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}${d.trophy ? ` · ${TROPHY[d.trophy].stamp}` : ''}${G.retry ? ' (retry)' : ''}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no && G.mode !== 'survival' ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}${surv}\n${G.grades.join('')}\nncaa2mindrill.com`;
 }
-// 1200x630 share card, the shape of the one people already share from the NFL game: who you called it like,
-// the evidence, and a spoiler-free "today's score". White card, result kept off it.
+// 1200x630 share card, in the look people already screenshot from the NFL game: the score, the checkmark grid,
+// the YOU VS COACH box, the real-game footnote - plus who you called it like, which theirs doesn't have.
 function drawShareCard(cv) {
-  const sc = G.sc, d = G.done, c = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const sc = G.sc, d = G.done, gl = gameLabel(sc), off = T_(sc.off), def = T_(sc.dfn);
+  const c = cv.getContext('2d'), W = cv.width, H = cv.height;
   const UI = '"Saira Condensed", "Arial Narrow", sans-serif', BODY = '"Barlow", "Segoe UI", sans-serif';
-  c.fillStyle = '#f7f6f2'; c.fillRect(0, 0, W, H);
-  c.strokeStyle = '#e6e4dc'; c.lineWidth = 2; c.strokeRect(1, 1, W - 2, H - 2);
+  const CHALK = '#eef2f6', MUTED = '#8ea0b8', AMBER = '#e9b949', GREEN = '#4cc27a', RED = '#ff8d7e';
+  c.fillStyle = '#0e1118'; c.fillRect(0, 0, W, H);
+  c.fillStyle = off.color; c.fillRect(0, 0, 12, H); c.fillStyle = def.color; c.fillRect(W - 12, 0, 12, H);
   c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-  const center = (text, y, font, color, maxW) => {
-    c.font = font; c.fillStyle = color;
-    let fs = +font.match(/(\d+)px/)[1];
-    while (c.measureText(text).width > maxW && fs > 20) { fs -= 2; c.font = font.replace(/\d+px/, fs + 'px'); }
-    c.fillText(text, W / 2, y);
-  };
-  const wrapCenter = (text, y, font, color, maxW, lh) => {
-    c.font = font; c.fillStyle = color;
-    const lines = []; let cur = '';
-    for (const w of text.split(' ')) { const t = (cur + ' ' + w).trim(); if (c.measureText(t).width <= maxW) cur = t; else { lines.push(cur); cur = w; } }
-    if (cur) lines.push(cur);
-    for (const ln of lines) { c.fillText(ln, W / 2, y); y += lh; }
-    return y - lh;
-  };
-  // who you called it like, with the evidence
-  const res = resemblance();
-  const name = res ? res.best.coach : sc.coach;
-  const tendRow = D.tend && D.tend[name];
-  center('Y O U   C A L L E D   T H I S   O N E   L I K E', 84, `600 27px ${UI}`, '#8e8c82', W - 160);
-  center(name.toUpperCase(), 178, `800 100px ${UI}`, '#17171c', W - 160);
-  const plays = G.snaps.filter(x => x.kind === 'pass' || x.kind === 'run');
-  const passes = plays.filter(x => x.kind === 'pass').length, deeps = plays.filter(x => x.kind === 'pass' && x.deep).length;
-  const fourth = G.snaps.filter(x => x.down === 4 && !x.twoPt), went = fourth.filter(x => x.kind === 'pass' || x.kind === 'run').length;
-  let body;
-  if (res && plays.length >= 3) {
-    // the evidence: the tendencies where you and he actually agree, closest match first
-    const early = plays.filter(x => x.down <= 2), pd = plays.filter(x => x.down >= 3);
-    const pe = early.filter(x => x.kind === 'pass').length, pp = pd.filter(x => x.kind === 'pass').length;
-    const cand = [];
-    cand.push({ diff: Math.abs(passes / plays.length - res.best.pass), t: `threw on ${passes} of ${plays.length} snaps (he throws ${Math.round(res.best.pass * 100)}%)` });
-    if (early.length >= 3) cand.push({ diff: Math.abs(pe / early.length - res.best.early), t: `threw on ${pe} of ${early.length} early downs (him: ${Math.round(res.best.early * 100)}%)` });
-    if (pd.length >= 2) cand.push({ diff: Math.abs(pp / pd.length - res.best.pd), t: `threw on ${pp} of ${pd.length} passing downs (him: ${Math.round(res.best.pd * 100)}%)` });
-    if (passes >= 3 && tendRow) {
-      const hisDeep = tendRow[5] || 0, mineDeep = deeps / passes;
-      cand.push({ diff: Math.abs(mineDeep - hisDeep), t: mineDeep <= 0.2 ? `kept it short on ${passes - deeps} of ${passes} throws (him: ${Math.round((1 - hisDeep) * 100)}%)` : `took ${deeps} deep shot${deeps === 1 ? '' : 's'} in ${passes} throws (him: ${Math.round(hisDeep * 100)}%)` });
+  const fit = (text, font, maxW) => { c.font = font; let fs = +font.match(/(\d+)px/)[1]; while (c.measureText(text).width > maxW && fs > 20) { fs -= 2; c.font = font.replace(/\d+px/, fs + 'px'); } };
+  // eyebrow: the situation and the game
+  c.fillStyle = AMBER; fit(`${headline(sc).toUpperCase()} \u00b7 ${gl.title.toUpperCase()} \u00b7 ${gl.when.toUpperCase()}`, `700 26px ${UI}`, W - 140);
+  c.fillText(`${headline(sc).toUpperCase()} \u00b7 ${gl.title.toUpperCase()} \u00b7 ${gl.when.toUpperCase()}`, W / 2, 58);
+  // the big line
+  const decided = d.T <= 0 || d.wp >= 0.999 || d.wp <= 0.001;
+  let big;
+  if (d.surv) big = d.surv.won ? `SURVIVED \u00b7 ROUND ${d.surv.round}` : `RUN OVER \u00b7 ROUND ${d.surv.round}`;
+  else if (decided) big = d.os === d.ds ? `TO OVERTIME ${d.os}\u2013${d.ds}` : (d.os > d.ds || d.wp >= 0.999) ? `YOU WIN ${d.os}\u2013${d.ds}` : `YOU LOSE ${d.os}\u2013${d.ds}`;
+  else big = `${pct(d.wp)} TO WIN \u00b7 ${d.os}\u2013${d.ds}`;
+  c.fillStyle = CHALK; fit(big, `800 82px ${UI}`, W - 160); c.fillText(big, W / 2, 136);
+  // the grid: one tile per call, checks and marks
+  const marks = G.snaps.length ? G.snaps.map(x => x.e) : G.grades.slice();
+  const tile = marks.length > 24 ? 32 : 40, gap = 8, perRow = Math.floor((W - 200) / (tile + gap));
+  const rows = []; for (let i = 0; i < marks.length; i += perRow) rows.push(marks.slice(i, i + perRow));
+  let ty = 162;
+  for (const row of rows.slice(0, 3)) {
+    let tx = W / 2 - (row.length * (tile + gap) - gap) / 2;
+    for (const e of row) {
+      c.fillStyle = e === '\ud83d\udfe9' ? '#3f9b53' : e === '\ud83d\udfe8' ? '#d9a13a' : '#c24a3f';
+      c.beginPath(); c.roundRect ? c.roundRect(tx, ty, tile, tile, 8) : c.rect(tx, ty, tile, tile); c.fill();
+      c.fillStyle = '#0e1118'; c.font = `800 ${Math.round(tile * 0.62)}px ${BODY}`;
+      c.fillText(e === '\ud83d\udfe9' ? '\u2713' : e === '\ud83d\udfe8' ? '!' : '\u2717', tx + tile / 2, ty + tile * 0.72);
+      tx += tile + gap;
     }
-    cand.sort((a, b) => a.diff - b.diff);
-    const clauses = cand.slice(0, 2).map(x => x.t);
-    if (fourth.length) clauses.splice(1, 1, `went for it on ${went} of ${fourth.length} fourth down${fourth.length > 1 ? 's' : ''}`);
-    body = 'Like him, you ' + clauses.join(', and ') + '.';
-  } else body = `${G.snaps.length} snap${G.snaps.length === 1 ? '' : 's'} is a small sample. Coaches get a season; you got a drive.`;
-  const bodyEnd = wrapCenter(body, 238, `500 32px ${BODY}`, '#45443c', W - 280, 44);
-  const seasons = (D.coaches && D.coaches[name] || []).map(x => x[0]);
-  const yrs = seasons.length ? (Math.min(...seasons) === Math.max(...seasons) ? `${seasons[0]}` : `${Math.min(...seasons)}\u2013${Math.max(...seasons)}`) : '';
-  if (tendRow) center(`${tendRow[0]} \u00b7 ${yrs ? yrs + ' \u00b7 ' : ''}from ${tendRow[6].toLocaleString()} late-game snaps`, bodyEnd + 48, `500 24px ${BODY}`, '#8e8c82', W - 240);
-  // against the room, without giving the result away
-  const m = G.pctl && G.pctl.wps ? G.pctl.wps.slice().sort((a, b) => a - b)[Math.floor(G.pctl.wps.length / 2)] : null;
-  const rel = m > 0.02 ? (d.wp / m - 1) * 100 : null;
-  const relLine = rel != null ? `${rel >= 0 ? '+' : '\u2212'}${Math.abs(rel) >= 100 ? Math.round(Math.abs(rel)) : Math.abs(rel).toFixed(1)}% win chance against a typical college play-caller on this drive.`
-    : `Scored against ${sc.coach}, who called the real drive.`;
-  wrapCenter(relLine, 430, `500 28px ${BODY}`, '#55544b', W - 300, 38);
-  // the tease: the score is on the site
-  const bx = 150, bw = W - 300, by = 474, bh = 66;
-  c.fillStyle = '#17181a'; c.beginPath(); c.roundRect ? c.roundRect(bx, by, bw, bh, 14) : c.rect(bx, by, bw, bh); c.fill();
-  c.fillStyle = '#f7f6f2'; c.font = `800 30px ${UI}`; c.fillText("T O D A Y ' S   S C O R E", W / 2, by + 43);
-  c.textAlign = 'left'; c.fillStyle = '#2c2b26'; c.font = `700 24px ${UI}`;
-  c.fillText('\u25b6 PLAY-BY-PLAY', 150, 594);
-  c.textAlign = 'right'; c.fillStyle = '#8e8c82'; c.font = `700 24px ${UI}`;
-  c.fillText('NCAA2MINDRILL.COM', W - 150, 594); c.textAlign = 'left';
-  if (d.trophy) { // the stamp survives the redesign: rare enough to deserve the corner
-    c.save(); c.translate(W - 170, 96); c.rotate(-0.14);
-    c.strokeStyle = d.trophy === 'saban' ? '#d9433a' : '#b8860b'; c.lineWidth = 5; c.strokeRect(-120, -32, 240, 64);
-    c.fillStyle = c.strokeStyle; c.font = `800 36px ${UI}`; c.textAlign = 'center'; c.fillText(TROPHY[d.trophy].stamp, 0, 12); c.textAlign = 'left'; c.restore();
+    ty += tile + gap;
   }
+  ty = Math.max(ty, 214);
+  // the verdict box: you vs the coach
+  const last = sc.coach.split(' ').slice(-1)[0].toUpperCase();
+  const diff = d.wp - sc.cwp;
+  const verdict = diff > 0.02 ? 'YOU DID BETTER' : diff < -0.02 ? `${last} DID BETTER` : 'DEAD EVEN';
+  const vcol = diff > 0.02 ? GREEN : diff < -0.02 ? RED : CHALK;
+  const bx = 200, bw = W - 400, by = ty + 12, bh = 174;
+  c.strokeStyle = vcol; c.lineWidth = 2.5; c.beginPath(); c.roundRect ? c.roundRect(bx, by, bw, bh, 12) : c.rect(bx, by, bw, bh); c.stroke();
+  c.fillStyle = MUTED; c.font = `700 22px ${UI}`; c.fillText(`YOU  VS  ${sc.coach.toUpperCase()}`, W / 2, by + 36);
+  c.fillStyle = vcol; fit(verdict, `800 54px ${UI}`, bw - 60); c.fillText(verdict, W / 2, by + 92);
+  const rowLine = (label, value, y) => {
+    c.textAlign = 'left'; c.fillStyle = CHALK; c.font = `600 24px ${BODY}`; c.fillText(label, bx + 34, y);
+    c.textAlign = 'right'; c.fillStyle = MUTED; c.fillText(value, bx + bw - 34, y);
+    c.textAlign = 'center';
+  };
+  c.strokeStyle = '#2a3d57'; c.lineWidth = 1; c.beginPath(); c.moveTo(bx + 24, by + 112); c.lineTo(bx + bw - 24, by + 112); c.stroke();
+  rowLine('You', decided ? (d.os > d.ds ? `Won ${d.os}\u2013${d.ds}` : d.os < d.ds ? `Lost ${d.os}\u2013${d.ds}` : `Tied ${d.os}\u2013${d.ds}`) : `${pct(d.wp)} to win \u00b7 ${d.os}\u2013${d.ds}`, by + 140);
+  rowLine(sc.coach, `${sc.won ? 'Won' : 'Lost'} ${sc.final[0]}\u2013${sc.final[1]}`, by + 166);
+  // who you called it like (ours, not theirs)
+  const res = resemblance();
+  if (res) { c.fillStyle = AMBER; fit(`YOU CALLED IT LIKE ${res.best.coach.toUpperCase()} (${res.best.school.toUpperCase()})`, `700 26px ${UI}`, W - 240); c.fillText(`YOU CALLED IT LIKE ${res.best.coach.toUpperCase()} (${res.best.school.toUpperCase()})`, W / 2, by + bh + 36); }
+  // the real-game footnote
+  const r = resultWord(sc).toLowerCase();
+  const art = /^[aeiou]/.test(r) ? 'an' : 'a';
+  const foot = /clock/.test(r) ? `In the real game (${gl.title} \u00b7 ${sc.year}), with ${sc.coach} calling it, the drive ran out the clock.`
+    : `In the real game (${gl.title} \u00b7 ${sc.year}), with ${sc.coach} calling it, the drive ended in ${art} ${r}.`;
+  c.fillStyle = MUTED; fit(foot, `500 22px ${BODY}`, W - 260); c.fillText(foot, W / 2, by + bh + 70);
+  // the pill
+  const px = 200, pw = W - 400, py = 556, ph = 54;
+  c.fillStyle = '#f2f1ec'; c.beginPath(); c.roundRect ? c.roundRect(px, py, pw, ph, 12) : c.rect(px, py, pw, ph); c.fill();
+  c.fillStyle = '#15171c'; c.font = `800 26px ${UI}`; c.fillText("N C A A 2 M I N D R I L L . C O M", W / 2, py + 36);
+  if (d.trophy) {
+    c.save(); c.translate(W - 150, 80); c.rotate(-0.14);
+    c.strokeStyle = d.trophy === 'saban' ? '#d9433a' : AMBER; c.lineWidth = 5; c.strokeRect(-110, -28, 220, 56);
+    c.fillStyle = c.strokeStyle; c.font = `800 32px ${UI}`; c.fillText(TROPHY[d.trophy].stamp, 0, 11); c.restore();
+  }
+  c.textAlign = 'left';
 }
 function resultWord(sc) {
   const m = { TD: 'Touchdown', FG: 'Field goal', INT: 'Interception', DOWNS: 'Turnover on downs', PUNT: 'Punt', FUMBLE: 'Fumble lost', 'MISSED FG': 'Missed field goal', 'END OF GAME': 'Ran out the clock', 'INT TD': 'Pick six', 'END OF 4TH QUARTER': 'Clock ran out' };
