@@ -1650,58 +1650,79 @@ function shareText() {
   const surv = G.mode === 'survival' && d.surv ? `\nSurvival · ${d.surv.won ? `survived round ${d.surv.round}` : `run over after ${d.surv.streak}`}` : '';
   return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}${d.trophy ? ` · ${TROPHY[d.trophy].stamp}` : ''}${G.retry ? ' (retry)' : ''}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no && G.mode !== 'survival' ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}${surv}\n${G.grades.join('')}\nncaa2mindrill.com`;
 }
-// 1200x630 share card (the size X, Facebook and iMessage previews use)
+// 1200x630 share card, the shape of the one people already share from the NFL game: who you called it like,
+// the evidence, and a spoiler-free "today's score". White card, result kept off it.
 function drawShareCard(cv) {
-  // clean on purpose: the verdict, the two numbers, the grade row, the URL. Nothing else.
-  const sc = G.sc, d = G.done, gl = gameLabel(sc), off = T_(sc.off), def = T_(sc.dfn), saban = G.mode === 'saban', cig = G.mode === 'cignetti';
-  const c = cv.getContext('2d'), W = cv.width, H = cv.height;
-  const UI = '"Saira Condensed", "Arial Narrow", sans-serif';
-  c.fillStyle = saban ? '#160c0c' : cig ? '#14120a' : '#0c1420'; c.fillRect(0, 0, W, H);
-  // turf stripe and team color rails
-  c.fillStyle = '#2f6b3a'; c.fillRect(0, H - 64, W, 64);
-  c.strokeStyle = 'rgba(255,255,255,.3)'; c.lineWidth = 2; for (let x = 60; x < W; x += 100) { c.beginPath(); c.moveTo(x, H - 64); c.lineTo(x, H); c.stroke(); }
-  c.fillStyle = off.color; c.fillRect(0, 0, 14, H - 64); c.fillStyle = def.color; c.fillRect(W - 14, 0, 14, H - 64);
-  const accent = saban ? '#d9433a' : cig ? '#e0b43a' : '#f3b23c';
-  c.textBaseline = 'alphabetic';
-  c.fillStyle = accent; c.font = `700 28px ${UI}`;
-  c.fillText((saban ? 'SABAN MODE' : cig ? 'CIGNETTI MODE' : 'NCAA TWO-MINUTE DRILL') + (G.no && G.mode !== 'survival' ? ` · NO. ${G.no}` : ''), 70, 82);
-  c.fillStyle = '#8ea0b8'; c.font = `600 26px ${UI}`;
-  c.fillText(`${gl.title.toUpperCase()} · ${gl.when.toUpperCase()}`, 70, 120);
-  const verdict = d.wp - sc.cwp > 0.02 ? `I BEAT ${sc.coach.toUpperCase()}` : Math.abs(d.wp - sc.cwp) <= 0.02 ? `DEAD EVEN WITH ${sc.coach.toUpperCase()}` : `${sc.coach.toUpperCase()} GOT ME`;
-  c.fillStyle = '#eef2f6'; let fs = 96; c.font = `800 ${fs}px ${UI}`;
-  while (c.measureText(verdict).width > W - 160 && fs > 44) { fs -= 4; c.font = `800 ${fs}px ${UI}`; }
-  c.fillText(verdict, 70, 232);
-  // the two numbers
-  const num = (x, label, v, color) => {
-    c.fillStyle = '#8ea0b8'; c.font = `700 28px ${UI}`; c.fillText(label.toUpperCase(), x, 282);
-    c.fillStyle = color; c.font = `800 118px ${UI}`; c.fillText(pct(v), x, 390);
-    c.fillStyle = '#8ea0b8'; c.font = `600 22px ${UI}`; c.fillText('WIN CHANCE', x, 418);
+  const sc = G.sc, d = G.done, c = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const UI = '"Saira Condensed", "Arial Narrow", sans-serif', BODY = '"Barlow", "Segoe UI", sans-serif';
+  c.fillStyle = '#f7f6f2'; c.fillRect(0, 0, W, H);
+  c.strokeStyle = '#e6e4dc'; c.lineWidth = 2; c.strokeRect(1, 1, W - 2, H - 2);
+  c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  const center = (text, y, font, color, maxW) => {
+    c.font = font; c.fillStyle = color;
+    let fs = +font.match(/(\d+)px/)[1];
+    while (c.measureText(text).width > maxW && fs > 20) { fs -= 2; c.font = font.replace(/\d+px/, fs + 'px'); }
+    c.fillText(text, W / 2, y);
   };
-  const last = sc.coach.split(' ').slice(-1)[0];
-  num(70, 'Me', d.wp, accent);
-  c.fillStyle = '#44597a'; c.font = `800 54px ${UI}`; c.fillText('VS', W / 2 - 40, 364);
-  num(W / 2 + 70, last, sc.cwp, '#eef2f6');
-  // call by call: my tiles against his real calls, graded by the same model (tiles, not emoji, so the card renders the same everywhere)
-  let theirs = [];
-  try { theirs = coachSnaps(G.sc0 || sc).map(s => s.e).filter(Boolean); } catch { /* no coach grades: his row stays empty */ }
-  const maxN = Math.max(G.grades.length, theirs.length, 1);
-  const tileW = Math.min(32, (W - 340) / maxN - 6), gap = Math.min(8, tileW / 4);
-  [['ME', G.grades], [last.toUpperCase(), theirs]].forEach(([label, arr], ri) => {
-    const y = 448 + ri * (tileW + 16);
-    c.fillStyle = '#8ea0b8'; c.font = `700 24px ${UI}`; c.fillText(label, 70, y + tileW / 2 + 9);
-    let tx = 250;
-    for (const e of arr) { c.fillStyle = e === '🟩' ? '#4cc27a' : e === '🟨' ? '#e9b949' : '#e2574c'; c.beginPath(); c.roundRect ? c.roundRect(tx, y, tileW, tileW, 6) : c.rect(tx, y, tileW, tileW); c.fill(); tx += tileW + gap; }
-    if (!arr.length) { c.fillStyle = '#44597a'; c.font = `600 22px ${UI}`; c.fillText('NO GRADED CALLS', 250, y + tileW / 2 + 9); }
-  });
-  if (d.trophy) { // the stamp: rotated, loud, rare
-    c.save(); c.translate(W - 240, 120); c.rotate(-0.16);
-    c.strokeStyle = d.trophy === 'saban' ? '#d9433a' : '#e0b43a'; c.lineWidth = 6; c.strokeRect(-150, -42, 300, 84);
-    c.fillStyle = c.strokeStyle; c.font = `800 46px ${UI}`; c.textAlign = 'center'; c.fillText(TROPHY[d.trophy].stamp, 0, 16); c.textAlign = 'left'; c.restore();
+  const wrapCenter = (text, y, font, color, maxW, lh) => {
+    c.font = font; c.fillStyle = color;
+    const lines = []; let cur = '';
+    for (const w of text.split(' ')) { const t = (cur + ' ' + w).trim(); if (c.measureText(t).width <= maxW) cur = t; else { lines.push(cur); cur = w; } }
+    if (cur) lines.push(cur);
+    for (const ln of lines) { c.fillText(ln, W / 2, y); y += lh; }
+    return y - lh;
+  };
+  // who you called it like, with the evidence
+  const res = resemblance();
+  const name = res ? res.best.coach : sc.coach;
+  const tendRow = D.tend && D.tend[name];
+  center('Y O U   C A L L E D   T H I S   O N E   L I K E', 84, `600 27px ${UI}`, '#8e8c82', W - 160);
+  center(name.toUpperCase(), 178, `800 100px ${UI}`, '#17171c', W - 160);
+  const plays = G.snaps.filter(x => x.kind === 'pass' || x.kind === 'run');
+  const passes = plays.filter(x => x.kind === 'pass').length, deeps = plays.filter(x => x.kind === 'pass' && x.deep).length;
+  const fourth = G.snaps.filter(x => x.down === 4 && !x.twoPt), went = fourth.filter(x => x.kind === 'pass' || x.kind === 'run').length;
+  let body;
+  if (res && plays.length >= 3) {
+    // the evidence: the tendencies where you and he actually agree, closest match first
+    const early = plays.filter(x => x.down <= 2), pd = plays.filter(x => x.down >= 3);
+    const pe = early.filter(x => x.kind === 'pass').length, pp = pd.filter(x => x.kind === 'pass').length;
+    const cand = [];
+    cand.push({ diff: Math.abs(passes / plays.length - res.best.pass), t: `threw on ${passes} of ${plays.length} snaps (he throws ${Math.round(res.best.pass * 100)}%)` });
+    if (early.length >= 3) cand.push({ diff: Math.abs(pe / early.length - res.best.early), t: `threw on ${pe} of ${early.length} early downs (him: ${Math.round(res.best.early * 100)}%)` });
+    if (pd.length >= 2) cand.push({ diff: Math.abs(pp / pd.length - res.best.pd), t: `threw on ${pp} of ${pd.length} passing downs (him: ${Math.round(res.best.pd * 100)}%)` });
+    if (passes >= 3 && tendRow) {
+      const hisDeep = tendRow[5] || 0, mineDeep = deeps / passes;
+      cand.push({ diff: Math.abs(mineDeep - hisDeep), t: mineDeep <= 0.2 ? `kept it short on ${passes - deeps} of ${passes} throws (him: ${Math.round((1 - hisDeep) * 100)}%)` : `took ${deeps} deep shot${deeps === 1 ? '' : 's'} in ${passes} throws (him: ${Math.round(hisDeep * 100)}%)` });
+    }
+    cand.sort((a, b) => a.diff - b.diff);
+    const clauses = cand.slice(0, 2).map(x => x.t);
+    if (fourth.length) clauses.splice(1, 1, `went for it on ${went} of ${fourth.length} fourth down${fourth.length > 1 ? 's' : ''}`);
+    body = 'Like him, you ' + clauses.join(', and ') + '.';
+  } else body = `${G.snaps.length} snap${G.snaps.length === 1 ? '' : 's'} is a small sample. Coaches get a season; you got a drive.`;
+  const bodyEnd = wrapCenter(body, 238, `500 32px ${BODY}`, '#45443c', W - 280, 44);
+  const seasons = (D.coaches && D.coaches[name] || []).map(x => x[0]);
+  const yrs = seasons.length ? (Math.min(...seasons) === Math.max(...seasons) ? `${seasons[0]}` : `${Math.min(...seasons)}\u2013${Math.max(...seasons)}`) : '';
+  if (tendRow) center(`${tendRow[0]} \u00b7 ${yrs ? yrs + ' \u00b7 ' : ''}from ${tendRow[6].toLocaleString()} late-game snaps`, bodyEnd + 48, `500 24px ${BODY}`, '#8e8c82', W - 240);
+  // against the room, without giving the result away
+  const m = G.pctl && G.pctl.wps ? G.pctl.wps.slice().sort((a, b) => a - b)[Math.floor(G.pctl.wps.length / 2)] : null;
+  const rel = m > 0.02 ? (d.wp / m - 1) * 100 : null;
+  const relLine = rel != null ? `${rel >= 0 ? '+' : '\u2212'}${Math.abs(rel) >= 100 ? Math.round(Math.abs(rel)) : Math.abs(rel).toFixed(1)}% win chance against a typical college play-caller on this drive.`
+    : `Scored against ${sc.coach}, who called the real drive.`;
+  wrapCenter(relLine, 430, `500 28px ${BODY}`, '#55544b', W - 300, 38);
+  // the tease: the score is on the site
+  const bx = 150, bw = W - 300, by = 474, bh = 66;
+  c.fillStyle = '#17181a'; c.beginPath(); c.roundRect ? c.roundRect(bx, by, bw, bh, 14) : c.rect(bx, by, bw, bh); c.fill();
+  c.fillStyle = '#f7f6f2'; c.font = `800 30px ${UI}`; c.fillText("T O D A Y ' S   S C O R E", W / 2, by + 43);
+  c.textAlign = 'left'; c.fillStyle = '#2c2b26'; c.font = `700 24px ${UI}`;
+  c.fillText('\u25b6 PLAY-BY-PLAY', 150, 594);
+  c.textAlign = 'right'; c.fillStyle = '#8e8c82'; c.font = `700 24px ${UI}`;
+  c.fillText('NCAA2MINDRILL.COM', W - 150, 594); c.textAlign = 'left';
+  if (d.trophy) { // the stamp survives the redesign: rare enough to deserve the corner
+    c.save(); c.translate(W - 170, 96); c.rotate(-0.14);
+    c.strokeStyle = d.trophy === 'saban' ? '#d9433a' : '#b8860b'; c.lineWidth = 5; c.strokeRect(-120, -32, 240, 64);
+    c.fillStyle = c.strokeStyle; c.font = `800 36px ${UI}`; c.textAlign = 'center'; c.fillText(TROPHY[d.trophy].stamp, 0, 12); c.textAlign = 'left'; c.restore();
   }
-  c.fillStyle = '#eef2f6'; c.font = `800 36px ${UI}`; c.textAlign = 'right';
-  c.fillText('NCAA2MINDRILL.COM', W - 54, H - 20); c.textAlign = 'left';
 }
-
 function resultWord(sc) {
   const m = { TD: 'Touchdown', FG: 'Field goal', INT: 'Interception', DOWNS: 'Turnover on downs', PUNT: 'Punt', FUMBLE: 'Fumble lost', 'MISSED FG': 'Missed field goal', 'END OF GAME': 'Ran out the clock', 'INT TD': 'Pick six', 'END OF 4TH QUARTER': 'Clock ran out' };
   return m[sc.result] || sc.result;
