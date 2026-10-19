@@ -50,6 +50,12 @@ def fetch(season, after_utc):
     return fresh
 
 
+def possession_over(pt):
+    pt = str(pt)
+    return ('Interception' in pt or 'Touchdown' in pt or 'Fumble Recovery (Opponent)' in pt or pt.startswith('Punt')
+            or pt == 'Blocked Punt' or pt == 'Safety' or pt.startswith('Field Goal') or pt == 'Blocked Field Goal')
+
+
 def clock_of(text):
     m = re.match(r'\((\d+):(\d+)\)', str(text))
     return (f'{m.group(1)}:{m.group(2)}', int(m.group(1)) * 60 + int(m.group(2))) if m else (None, None)
@@ -95,11 +101,12 @@ def rank(season, saturday):
         # possessions: follow the offense (drive ids are unreliable); scrimmage plays and kneels, Q4 and overtime
         kneel = g.play_text.fillna('').str.contains('kneel', case=False)
         sc = g[((g['pass'] == 1) | (g.rush == 1) | (g.sack == 1) | kneel) & (g.period >= 4)]
-        poss, cur = [], None
+        poss, cur, ended = [], None, False
         for r in sc.itertuples(index=False):
-            if cur is None or r.pos_team != cur['team']:
+            if cur is None or r.pos_team != cur['team'] or ended:   # the feed sometimes keeps the team after a score or turnover
                 cur = dict(team=r.pos_team, rows=[]); poss.append(cur)
             cur['rows'].append(r)
+            ended = possession_over(r.play_type)
         for i, d in enumerate(poss):
             r0 = d['rows'][0]
             if r0.period != 4 or any('kneel' in str(x.play_text).lower() for x in d['rows']):

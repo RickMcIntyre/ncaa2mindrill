@@ -648,6 +648,12 @@ for st in [(-7, 110, 75, 1, 10, 2, 3), (-3, 30, 30, 1, 10, 1, 3), (-3, 5, 25, 1,
 first = p[(p.is_passplay | p.is_rushplay | p.is_sack | (p.play_type == 'Penalty')) & ~p.kneel].groupby('id_drive').head(1)
 cand = first[(first.period == 4) & (first.TimeSecsRem <= 150) & (first.TimeSecsRem >= 20) &
              (first.pos_team_score - first.def_pos_team_score).between(-16, 0) & first.yards_to_goal.between(20, 99)]
+def possession_over(pt):
+    pt = str(pt)
+    return ('Interception' in pt or 'Touchdown' in pt or 'Fumble Recovery (Opponent)' in pt or pt.startswith('Punt')
+            or pt == 'Blocked Punt' or pt == 'Safety' or pt.startswith('Field Goal') or pt == 'Blocked Field Goal')
+
+
 FEAT_DRIVE = {}
 if FEAT:  # the hand-picked drives start at the snap whose play text shows that clock
     picks = []
@@ -660,10 +666,11 @@ if FEAT:  # the hand-picked drives start at the snap whose play text shows that 
         rest = p[(p.game_id == gid_) & (p.game_play_number >= h0.game_play_number)].sort_values('game_play_number')
         rows = []
         for w in rest.itertuples(index=False):
-            if w.play_type == 'Timeout' or w.pos_team == h0.pos_team:
-                rows.append(w.game_play_number)
-                continue
-            break
+            if w.play_type == 'Kickoff' or (w.play_type != 'Timeout' and w.pos_team != h0.pos_team):
+                break
+            rows.append(w.game_play_number)
+            if possession_over(w.play_type):   # a score, turnover, punt or kick ends it even if the feed keeps the team
+                break
         FEAT_DRIVE[h0.id_drive] = p[(p.game_id == gid_) & p.game_play_number.isin(rows) & (p.play_type != 'Timeout')]
         picks.append(hit.head(1))
     cand = pd.concat(picks)
