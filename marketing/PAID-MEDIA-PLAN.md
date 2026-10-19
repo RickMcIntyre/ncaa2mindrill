@@ -76,7 +76,7 @@ Why: this is where college football argues about play calls in real time, and th
 - A: One real late-game college drive a day. The real score, clock and players. You call every snap, then you're graded against the coach who actually called it. Free. {link}
 - B: Down 3, 1:46 left, your ball. That drive happened. Now it's yours. Beat the head coach or hear about it. {link}
 - C: He has a staff and a headset. You have a browser. Same drive, same clock. Who calls it better? {link}
-- D (Saban): Saban mode: the drives that start at 10% or worse. The 28–3 drives. Nobody is expected to win them. Some people do. {link}
+- D (Saban): Saban mode: two touchdowns down, a minute or two left. The 28–3 drives. Nobody is expected to win them. Some people do. {link}
 - E (Survival): Survival: a real drive, then a harder one, then a harder one. Win to stay alive. One loss ends the run. {link}
 
 Promote the organic daily post too (the "today's drive" template in LAUNCH-KIT.md), $5 behind it on Saturdays with the day's two team tags.

@@ -502,7 +502,7 @@ function defenseSlots(sc) {
 const short = n => { const p = String(n).split(' '); return p.length > 1 ? `${p[0][0]}. ${p.slice(1).filter(x => !/^(Jr\.?|Sr\.?|II|III|IV)$/.test(x)).join(' ') || p[1]}` : n; };
 const T_ = id => D.teams[id];
 const clock = t => `${Math.floor(t / 60)}:${String(Math.max(0, Math.round(t % 60))).padStart(2, '0')}`;
-const pct = x => `${Math.round(x * 100)}%`;
+const pct = x => x > 0 && x < 0.005 ? '<1%' : x < 1 && x >= 0.995 ? '>99%' : `${Math.round(x * 100)}%`;
 const ord = d => ['', '1st', '2nd', '3rd', '4th'][d] || `${d}th`;
 function spot(ytg, sc) { if (ytg === 50) return 'midfield'; return ytg > 50 ? `${T_(sc.off).abbr} ${100 - ytg}` : `${T_(sc.dfn).abbr} ${ytg}`; }
 function downText(st) { return st.twoPt ? 'Two-point try' : `${ord(st.down)} & ${st.dist >= st.ytg ? 'goal' : st.dist}`; }
@@ -536,20 +536,25 @@ function freshLine(sc) {
   const wd = new Date(sc.date + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'long', timeZone: 'UTC' });
   return days <= 1 ? 'From yesterday' : days <= 6 ? `From ${wd}` : `From last ${wd}`;
 }
-// Saban mode: the drives almost nobody wins. Its daily order is its own, offset so it never shares a game with the regular daily.
-function sabanScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.hard, i * 7 + 3) }; }
-const HARD_WP = 0.10, CIG_WP = 0.25;
-const twoScore = s => s.os - s.ds <= -9;
-// Saban pool: brutal but attainable. One score down at 1-10% with time to run a play, or two scores down with at
-// least a minute left and a model that still gives it a pulse. The truly hopeless ones are kept out of everything.
-const isHard = s => (s.wp0 <= HARD_WP && s.wp0 >= 0.01 && s.secs >= 25 && !twoScore(s)) || (twoScore(s) && s.secs >= 60 && s.wp0 >= 0.003);
-const isHopeless = s => !isHard(s) && (s.wp0 < 0.01 || twoScore(s));
-// Cignetti mode: one shelf up from Saban. One score down, 10-25% to win. Hard, not hopeless.
-const isCig = s => s.os - s.ds >= -8 && s.wp0 > HARD_WP && s.wp0 <= CIG_WP;
-function cignettiScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.cig, i * 5 + 1) }; }
+// The hard modes are sorted by the scoreboard. Cignetti is two scores down, 9-11 points: a touchdown, an onside
+// kick and a field goal. Saban is two touchdowns down, 12-16. Both need a minute on the clock and a model that
+// still gives the drive a pulse. One-score long shots are the deep end of free Survival; the truly hopeless
+// ones are kept out of everything.
+const deficit = s => s.ds - s.os;
+const twoScore = s => deficit(s) >= 9;
+const isCig = s => deficit(s) >= 9 && deficit(s) <= 11 && s.secs >= 60 && s.wp0 >= 0.003;
+const isHard = s => deficit(s) >= 12 && deficit(s) <= 16 && s.secs >= 60 && s.wp0 >= 0.001;
+const isHopeless = s => !isHard(s) && !isCig(s) && (s.wp0 < 0.01 || twoScore(s));
+const need = sc => { const d = deficit(sc); return d >= 12 ? 'two touchdowns and an onside kick, at least' : d >= 9 ? 'a touchdown, an onside kick and a field goal' : d >= 4 ? 'a touchdown' : d >= 1 ? 'a field goal' : 'a score'; };
+// the two drives served on Oct 18, 2026 (day 4), when the pools were still one-score: that day keeps them
+const POOL_PINS = { saban: { 3: 184 }, cignetti: { 3: 42 } };
+const pinnedDrive = (mode, i) => { const id = POOL_PINS[mode][i]; return id == null ? null : D.scen.find(s => s.id === id) || null; };
+// each hard mode's daily order is its own, offset so it never shares a game with the regular daily
+function sabanScenario() { const i = todayIndex(); return { no: i + 1, sc: pinnedDrive('saban', i) || pick(D.hard, i * 7 + 3) }; }
+function cignettiScenario() { const i = todayIndex(); return { no: i + 1, sc: pinnedDrive('cignetti', i) || pick(D.cig, i * 5 + 1) }; }
 const HARD_MODES = {
-  saban:    { label: 'Saban mode', tag: 'SABAN MODE', lvl: 'Hardest', tagline: 'Nobody wins this one', eyebrow: 'Saban mode · Hardest', btn: 'Nobody wins this one', cls: 'saban', fine: `Saban mode drives start at ${Math.round(HARD_WP * 100)}% win chance or worse, or two scores down.`, pitch: (sc, two) => `Starting win chance: <b>${pct(sc.wp0)}</b>.${two ? ' Two scores down: you need a touchdown, the onside kick, and then some.' : ''}<br>${esc(sc.coach)} didn't pull it off. Can you?` },
-  cignetti: { label: 'Cignetti mode', tag: 'CIGNETTI MODE', lvl: 'Hard', tagline: 'Hard, not hopeless', eyebrow: 'Cignetti mode · Hard', btn: 'Google me', cls: 'cignetti', fine: `Cignetti mode drives start between ${Math.round(HARD_WP * 100)}% and ${Math.round(CIG_WP * 100)}% win chance. Hard, not hopeless.`, pitch: sc => `Starting win chance: <b>${pct(sc.wp0)}</b>. Hard, not hopeless. The kind of drive that gets a coach a statue or a buyout.<br>${esc(sc.coach)} ${sc.won ? 'got it done' : "didn't"}. Your turn.` },
+  saban:    { label: 'Saban mode', tag: 'SABAN MODE', lvl: 'Hardest', tagline: 'Nobody wins this one', eyebrow: 'Saban mode · Hardest', btn: 'Nobody wins this one', cls: 'saban', fine: 'Saban mode drives start two touchdowns down (12–16 points) with at least a minute left.', pitch: sc => `Starting win chance: <b>${pct(sc.wp0)}</b>. Down ${deficit(sc)}: you need ${need(sc)}.<br>${esc(sc.coach)} ${sc.won ? 'somehow pulled it off' : "didn't pull it off"}. Can you?` },
+  cignetti: { label: 'Cignetti mode', tag: 'CIGNETTI MODE', lvl: 'Hard', tagline: "A touchdown isn't enough", eyebrow: 'Cignetti mode · Hard', btn: 'Google me', cls: 'cignetti', fine: 'Cignetti mode drives start two scores down (9–11 points) with at least a minute left.', pitch: sc => `Starting win chance: <b>${pct(sc.wp0)}</b>. Down ${deficit(sc)}: you need ${need(sc)}. The kind of drive that gets a coach a statue or a buyout.<br>${esc(sc.coach)} ${sc.won ? 'got it done' : "didn't"}. Your turn.` },
 };
 const isHardMode = m => m === 'saban' || m === 'cignetti';
 // Difficulty. Saban is the cliff (100/100): green only for the exact best call, and the simulated room is sharp.
@@ -653,8 +658,8 @@ async function claimFromUrl() {
 function ladderHTML(here) {
   const rungs = [
     ['daily', 'Daily', 'Normal', 'Free', `Starts 30–75% to win. Graded on the same curve as the real coach.`],
-    ['cignetti', 'Cignetti mode', 'Hard', 'Unlock', `Starts ${Math.round(HARD_WP * 100)}–${Math.round(CIG_WP * 100)}% to win, one score down. Graded on a steeper curve than the coach got.`],
-    ['saban', 'Saban mode', 'Hardest', 'Unlock', `Starts under ${Math.round(HARD_WP * 100)}%, or two scores down. Only the best call grades green. The 28–3 drives.`],
+    ['cignetti', 'Cignetti mode', 'Hard', 'Unlock', 'Down 9–11: a touchdown, an onside kick and a field goal. Graded on a steeper curve than the coach got.'],
+    ['saban', 'Saban mode', 'Hardest', 'Unlock', 'Down 12–16: two touchdowns and an onside kick. Only the best call grades green. The 28–3 drives.'],
   ];
   return `<div class="ladder" aria-label="Difficulty">${rungs.map(([k, name, lvl, price, desc]) =>
     `<div class="rung ${k}${k === here ? ' here' : ''}"><div class="nm">${name}<i>${lvl}</i></div><div class="px">${k === here ? 'You picked' : price}</div><div class="ds">${desc}</div></div>`).join('')}</div>`;
@@ -908,8 +913,9 @@ function setTab(t) {
 }
 
 function showDaily(mode) {
-  const { no, sc } = mode === 'saban' ? sabanScenario() : mode === 'cignetti' ? cignettiScenario() : dailyScenario();
+  const { no, sc: today } = mode === 'saban' ? sabanScenario() : mode === 'cignetti' ? cignettiScenario() : dailyScenario();
   const prev = (store[mode] ||= {})[no];
+  const sc = prev && prev.done && prev.sid != null ? D.scen.find(s => s.id === prev.sid) || today : today;
   const date = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   $('#subline').textContent = isHardMode(mode) ? `${HARD_MODES[mode].label} · No. ${no} · ${date}` : `No. ${no} · ${date}`;
   if (isHardMode(mode) && !premiumUnlocked()) { renderPaywall(mode); return; }
@@ -1855,16 +1861,17 @@ function renderFinal() {
 }
 
 // ---------- survival: win to stay alive ----------
-// Three runs. The free one climbs from regular drives to the Cignetti shelf (rounds 7-9) to the Saban pool (10+).
+// Three runs. The free one climbs from regular drives to one-score long shots (rounds 7-9), the Cignetti pool
+// (10-12) and the Saban pool (13+).
 // The Cignetti and Saban runs stay inside their own pool, easiest drives first, then harder.
 let survKind = 'free';
 const SURV_KINDS = {
-  free:     { key: 'survival', label: 'Survival', eyebrow: 'Survival', pitch: () => `A random real drive, then another, each one harder. Win the game to stay alive. Lose once and the run is over.<br>Rounds 1–6 are regular drives (45%+ to start, then 35–50%, then 28–40%). Rounds 7–9 come off the Cignetti shelf, 10 and up out of the Saban pool.${premiumUnlocked() ? '' : ' The deep end takes the unlock.'}` },
-  cignetti: { key: 'survCig', label: 'Cignetti survival', eyebrow: 'Cignetti mode · Survival', pitch: () => 'Every drive comes off the Cignetti shelf: 10–25% to win at the start, the friendlier ones first, then the rest. Win the game to stay alive. Lose once and the run is over. Hard, not hopeless, repeatedly.' },
-  saban:    { key: 'survSaban', label: 'Saban survival', eyebrow: 'Saban mode · Survival', pitch: () => 'Every drive comes out of the Saban pool: 10% to win or worse, or two scores down. The attainable end of hopeless, easiest first. Win to stay alive. Nobody is expected to survive two.' },
+  free:     { key: 'survival', label: 'Survival', eyebrow: 'Survival', pitch: () => `A random real drive, then another, each one harder. Win the game to stay alive. Lose once and the run is over.<br>Rounds 1–6 are regular drives (45%+ to start, then 35–50%, then 28–40%). Rounds 7–9 are one-score long shots, 10–12 come off the Cignetti shelf (two scores down), 13 and up out of the Saban pool (two touchdowns down).${premiumUnlocked() ? '' : ' The deep end takes the unlock.'}` },
+  cignetti: { key: 'survCig', label: 'Cignetti survival', eyebrow: 'Cignetti mode · Survival', pitch: () => 'Every drive comes off the Cignetti shelf: two scores down, 9–11 points, the friendlier ones first, then the rest. Win the game to stay alive. Lose once and the run is over. Bring an onside kick.' },
+  saban:    { key: 'survSaban', label: 'Saban survival', eyebrow: 'Saban mode · Survival', pitch: () => 'Every drive comes out of the Saban pool: two touchdowns down, 12–16 points, easiest first. Win to stay alive. Nobody is expected to survive two.' },
 };
 function survState(kind = survKind) { const k = (SURV_KINDS[kind] || SURV_KINDS.free).key; return store[k] ||= { best: 0, runs: 0, cur: null }; }
-const SURV_BAND = r => r <= 2 ? [0.45, 1.01] : r <= 4 ? [0.35, 0.50] : r <= 6 ? [0.28, 0.40] : r <= 9 ? [HARD_WP, CIG_WP] : [0, HARD_WP];
+const SURV_BAND = r => r <= 2 ? [0.45, 1.01] : r <= 4 ? [0.35, 0.50] : r <= 6 ? [0.28, 0.40] : [0.01, 0.28];
 function survPool(kind, round, used) {
   let pool;
   if (kind === 'cignetti' || kind === 'saban') { // the mode's own pool, sorted easiest first, in thirds by round
@@ -1872,7 +1879,7 @@ function survPool(kind, round, used) {
     pool = round <= 2 ? all.slice(0, Math.ceil(n * .4)) : round <= 4 ? all.slice(Math.floor(n * .3), Math.ceil(n * .7)) : all.slice(Math.floor(n * .6));
   } else {
     const [lo, hi] = SURV_BAND(round);
-    pool = round >= 10 ? D.hard : round >= 7 ? D.cig : D.scen.filter(s => !isHopeless(s) && !isHard(s) && !isCig(s) && s.wp0 > lo && s.wp0 <= hi);
+    pool = round >= 13 ? D.hard : round >= 10 ? D.cig : D.scen.filter(s => !isHopeless(s) && !isHard(s) && !isCig(s) && s.wp0 > lo && s.wp0 <= hi);
   }
   const fresh = pool.filter(s => !used.includes(s.id));
   if (fresh.length) return fresh;
@@ -1912,7 +1919,7 @@ function renderSurvPaywall(round) {
   renderPaywall('cignetti');
   const h = $('.paywall .headline'); if (h) h.innerHTML = 'The deep end<small>Rounds 7 and up</small>';
   const e = $('.paywall .eyebrow'); if (e) e.textContent = `Survival · round ${round} · the deep end is locked`;
-  const p = $('.paywall .pitch'); if (p) p.insertAdjacentHTML('afterbegin', `You survived ${round - 1}. Rounds 7 and up are Cignetti and Saban drives, which come with the unlock. Your run is saved here until you come back.<br><br>`);
+  const p = $('.paywall .pitch'); if (p) p.insertAdjacentHTML('afterbegin', `You survived ${round - 1}. Rounds 7 and up (the long shots, then Cignetti and Saban drives) come with the unlock. Your run is saved here until you come back.<br><br>`);
 }
 function survivalHTML() {
   const d = G.done, s = d && d.surv; if (!s) return '';
@@ -1964,7 +1971,7 @@ function showPractice() {
   app.innerHTML = `<div class="filters">
       <input id="pq" type="search" placeholder="Search a coach or school" value="${esc(pf.q)}" aria-label="Search a coach or school">
       <select id="py" aria-label="Season"><option value="">All seasons</option>${years}</select>
-      <select id="pk" aria-label="Situation"><option value="">Any situation</option><option value="tied" ${pf.kind === 'tied' ? 'selected' : ''}>Tied</option><option value="fg" ${pf.kind === 'fg' ? 'selected' : ''}>Down 1–3</option><option value="td" ${pf.kind === 'td' ? 'selected' : ''}>Down 4–8</option>${premiumUnlocked() ? `<option value="two" ${pf.kind === 'two' ? 'selected' : ''}>Down 9+ (two scores)</option><option value="saban" ${pf.kind === 'saban' ? 'selected' : ''}>Saban-hard (≤${Math.round(HARD_WP * 100)}% to start)</option><option value="cignetti" ${pf.kind === 'cignetti' ? 'selected' : ''}>Cignetti-hard (${Math.round(HARD_WP * 100)}–${Math.round(CIG_WP * 100)}% to start)</option>` : ''}</select>${premiumUnlocked() ? '' : '<span class="note" style="align-self:center">Hard drives are in Saban and Cignetti mode.</span>'}
+      <select id="pk" aria-label="Situation"><option value="">Any situation</option><option value="tied" ${pf.kind === 'tied' ? 'selected' : ''}>Tied</option><option value="fg" ${pf.kind === 'fg' ? 'selected' : ''}>Down 1–3</option><option value="td" ${pf.kind === 'td' ? 'selected' : ''}>Down 4–8</option>${premiumUnlocked() ? `<option value="two" ${pf.kind === 'two' ? 'selected' : ''}>Down 9+ (two scores)</option><option value="cignetti" ${pf.kind === 'cignetti' ? 'selected' : ''}>Cignetti mode (down 9–11)</option><option value="saban" ${pf.kind === 'saban' ? 'selected' : ''}>Saban mode (down 12–16)</option>` : ''}</select>${premiumUnlocked() ? '' : '<span class="note" style="align-self:center">Hard drives are in Saban and Cignetti mode.</span>'}
       <button class="cta ghost" id="rnd" style="flex:0 0 auto;width:auto">Random drive</button>
     </div><div id="plist"></div>`;
   const draw = () => {

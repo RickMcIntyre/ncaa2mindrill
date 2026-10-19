@@ -116,6 +116,7 @@ nav.tabs .mode-tab[aria-pressed="true"] .lvl { background: rgba(0, 0, 0, .2); co
 .ladder .rung.here .ds { color: var(--chalk); }
 .paywall .cta { display: block; text-align: center; text-decoration: none; }
 .subnav { display: flex; justify-content: center; gap: 6px; margin: -4px 0 10px; }
+.subnav[hidden] { display: none; }
 .subnav button { font-family: var(--f-ui); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
 .subnav button[aria-pressed="true"] { color: var(--amber); border-color: var(--amber); }
 .card.gift { display: grid; gap: 6px; border-color: var(--good); }
@@ -387,9 +388,9 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
     <li><b>Beat the real coach.</b> When your drive ends, your win chance is compared with what the real head coach got. Daily and Survival grade you on the same curve he gets. Cignetti tightens it. Saban is a cliff. You can retry any daily drive; the first attempt is the one that counts.</li>
     <li><b>Pick your personnel.</b> 10, 11, 12, 13, 21 or 22: backs, tight ends, receivers. Heavy groups block and pull the defense in; four wide spreads it out. When you sub, the defense subs too.</li>
     <li><b>Bench anyone.</b> Tap a player chip under the field to swap in a backup at that spot, including the backup quarterback. His season numbers come with him.</li>
-    <li><b>Survival.</b> A random drive, then a harder one, then a harder one. Win the game to stay alive; lose once and the run is over. Rounds 7 and up are Cignetti and Saban drives. Cignetti and Saban mode each have their own Survival run inside their own pool.</li>
-    <li><b>Cignetti mode · hard.</b> A second daily drive, a shelf down from the regular one: 10–25% to win at the start, graded on a steeper curve than the real coach. Hard, not hopeless. Google yourself afterward.</li>
-    <li><b>Saban mode · hardest.</b> A third daily drive, from the hopeless end: 10% to win or worse, or two scores down. Only the best call grades green. Nobody is expected to win these. One $0.99 unlock opens both modes.</li>
+    <li><b>Survival.</b> A random drive, then a harder one, then a harder one. Win the game to stay alive; lose once and the run is over. Rounds 7–9 are one-score long shots; 10 and up are Cignetti and Saban drives. Cignetti and Saban mode each have their own Survival run inside their own pool.</li>
+    <li><b>Cignetti mode · hard.</b> A second daily drive, two scores down: 9–11 points, so you need a touchdown, an onside kick and a field goal. Graded on a steeper curve than the real coach. Google yourself afterward.</li>
+    <li><b>Saban mode · hardest.</b> A third daily drive, two touchdowns down: 12–16 points. Only the best call grades green. Nobody is expected to win these. One $0.99 unlock opens both modes.</li>
   </ol>
   <button class="cta" id="helpClose">Let's go</button>
 </dialog>
@@ -425,7 +426,7 @@ window.ADS = { gtag: '', meta: '1054087884349992', x: '', xEvents: { purchase: '
 <script src="native.js?v=2"></script>
 <script src="sound.js?v=6"></script>
 <script src="anim.js?v=11"></script>
-<script src="app.js?v=43"></script>
+<script src="app.js?v=44"></script>
 
 </body>
 </html>

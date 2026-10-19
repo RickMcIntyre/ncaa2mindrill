@@ -20,7 +20,7 @@ Voice: dry, specific, no hype, no exclamation points, no jokes at a real coach. 
 
 7/ Today's drive: {away} at {home}, {year}. {Down by N}, {clock} left. {Coach} went {what he did}. Your turn.
 
-8/ Free. Two extra daily drives for $0.99: Cignetti mode (10–25% to win, hard, not hopeless) and Saban mode (10% or worse, or two scores down: the 28–3 drives). ncaa2mindrill.com
+8/ Free. Two extra daily drives for $0.99: Cignetti mode (two scores down: a touchdown, an onside kick and a field goal) and Saban mode (two touchdowns down: the 28–3 drives). ncaa2mindrill.com
 
 ---
 
@@ -36,7 +36,7 @@ At the end you're compared with the real head coach: your win chance after your 
 
 Honest caveats: it's a model. Players are rated by their season EPA, not matchups. The win-probability model is fitted on three seasons of Q4 FBS plays and is calibrated, but it's still a model. The animation is a drawing of what happened, not tracking data. It's fan-made and not affiliated with anyone.
 
-There are two paid daily drives ($0.99, once) from the ugly end of the pool: Cignetti mode (10–25% to win) and Saban mode (10% or worse, or two scores down). The rest stays free.
+There are two paid daily drives ($0.99, once) from the ugly end of the pool: Cignetti mode (two scores down) and Saban mode (two touchdowns down). The rest stays free.
 
 I'd love to hear which drives you want in the pool, and where the model is wrong.
 
@@ -78,7 +78,7 @@ One-liners:
 10. New drive. Same rules: real snap outcomes, real clock, real coach to beat. ncaa2mindrill.com
 11. Today's kicker is {strong/shaky}. Factor that in before 4th down. ncaa2mindrill.com
 12. The Saban mode drive today starts at {X}%. Nobody is expected to win it. ncaa2mindrill.com
-13. Cignetti mode today: {X}% to win. Hard, not hopeless. ncaa2mindrill.com
+13. Cignetti mode today: down {N}, {X}% to win. A touchdown isn't enough. ncaa2mindrill.com
 14. {Coach} got {X}% out of this drive. The median player yesterday got {Y}%. ncaa2mindrill.com
 15. Two scores down, {clock} left. Touchdown, onside, then some. Today's Saban drive. ncaa2mindrill.com
 
