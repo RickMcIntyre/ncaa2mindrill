@@ -548,8 +548,8 @@ const isHopeless = s => !isHard(s) && (s.wp0 < 0.01 || twoScore(s));
 const isCig = s => s.os - s.ds >= -8 && s.wp0 > HARD_WP && s.wp0 <= CIG_WP;
 function cignettiScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.cig, i * 5 + 1) }; }
 const HARD_MODES = {
-  saban:    { label: 'Saban mode', tag: 'SABAN MODE', eyebrow: 'Saban mode', btn: 'Nobody wins this one', cls: 'saban', fine: `Saban mode drives start at ${Math.round(HARD_WP * 100)}% win chance or worse, or two scores down.`, pitch: (sc, two) => `Starting win chance: <b>${pct(sc.wp0)}</b>.${two ? ' Two scores down: you need a touchdown, the onside kick, and then some.' : ''}<br>${esc(sc.coach)} didn't pull it off. Can you?` },
-  cignetti: { label: 'Cignetti mode', tag: 'CIGNETTI MODE', eyebrow: 'Cignetti mode', btn: 'Google me', cls: 'cignetti', fine: `Cignetti mode drives start between ${Math.round(HARD_WP * 100)}% and ${Math.round(CIG_WP * 100)}% win chance. Hard, not hopeless.`, pitch: sc => `Starting win chance: <b>${pct(sc.wp0)}</b>. Hard, not hopeless. The kind of drive that gets a coach a statue or a buyout.<br>${esc(sc.coach)} ${sc.won ? 'got it done' : "didn't"}. Your turn.` },
+  saban:    { label: 'Saban mode', tag: 'SABAN MODE', lvl: 'Hardest', tagline: 'Nobody wins this one', eyebrow: 'Saban mode · Hardest', btn: 'Nobody wins this one', cls: 'saban', fine: `Saban mode drives start at ${Math.round(HARD_WP * 100)}% win chance or worse, or two scores down.`, pitch: (sc, two) => `Starting win chance: <b>${pct(sc.wp0)}</b>.${two ? ' Two scores down: you need a touchdown, the onside kick, and then some.' : ''}<br>${esc(sc.coach)} didn't pull it off. Can you?` },
+  cignetti: { label: 'Cignetti mode', tag: 'CIGNETTI MODE', lvl: 'Hard', tagline: 'Hard, not hopeless', eyebrow: 'Cignetti mode · Hard', btn: 'Google me', cls: 'cignetti', fine: `Cignetti mode drives start between ${Math.round(HARD_WP * 100)}% and ${Math.round(CIG_WP * 100)}% win chance. Hard, not hopeless.`, pitch: sc => `Starting win chance: <b>${pct(sc.wp0)}</b>. Hard, not hopeless. The kind of drive that gets a coach a statue or a buyout.<br>${esc(sc.coach)} ${sc.won ? 'got it done' : "didn't"}. Your turn.` },
 };
 const isHardMode = m => m === 'saban' || m === 'cignetti';
 // Difficulty. Saban is the cliff (100/100): green only for the exact best call, and the simulated room is sharp.
@@ -582,6 +582,7 @@ function premiumUnlocked() {
 }
 function storeUnlock(code) {
   try { localStorage.setItem(UNLOCK_KEY, code); } catch { /* storage unavailable: unlocked for this visit only */ }
+  paintLocks();
   beacon('/unlocked', { code, src: window.Native && window.Native.isNative ? 'app' : 'web', from: firstSource() });
   track('purchase', { value: 0.99, currency: 'USD', transaction_id: code });
 }
@@ -648,15 +649,26 @@ async function claimFromUrl() {
   toast('Could not confirm the payment. Try again in a minute.');
   return false;
 }
+// the difficulty ladder on the locked screen: the free daily, then the two shelves the unlock opens
+function ladderHTML(here) {
+  const rungs = [
+    ['daily', 'Daily', 'Normal', 'Free', `Starts 30–75% to win. Graded on the same curve as the real coach.`],
+    ['cignetti', 'Cignetti mode', 'Hard', 'Unlock', `Starts ${Math.round(HARD_WP * 100)}–${Math.round(CIG_WP * 100)}% to win, one score down. Graded on a steeper curve than the coach got.`],
+    ['saban', 'Saban mode', 'Hardest', 'Unlock', `Starts under ${Math.round(HARD_WP * 100)}%, or two scores down. Only the best call grades green. The 28–3 drives.`],
+  ];
+  return `<div class="ladder" aria-label="Difficulty">${rungs.map(([k, name, lvl, price, desc]) =>
+    `<div class="rung ${k}${k === here ? ' here' : ''}"><div class="nm">${name}<i>${lvl}</i></div><div class="px">${k === here ? 'You picked' : price}</div><div class="ds">${desc}</div></div>`).join('')}</div>`;
+}
 function renderPaywall(mode) {
   const m = HARD_MODES[mode], native = window.Native && window.Native.isNative;
   const configured = !STRIPE_LINK.includes('REPLACE_ME');
   app.innerHTML = `<section class="intro paywall">
     <div class="eyebrow">${esc(m.eyebrow)} · locked</div>
-    <h2 class="headline" style="font-size:clamp(40px,10vw,72px)">The hard<small>modes</small></h2>
-    <div class="pitch"><b>Cignetti mode</b>: 10–25% to win. Hard, not hopeless. Start here.<br><b>Saban mode</b>: 10% to win or worse, or two scores down. The 28–3 drives.<br>One $0.99 unlock gets you both, with a new drive of each every day.</div>
-    ${native ? `<button class="cta" id="buyBtn">Unlock Cignetti + Saban · ${esc(window.Native.price || '$0.99')}</button><button class="cta ghost" id="restoreBtn">Restore purchase</button><div class="fine" id="buyNote"></div>`
-      : `${configured ? `<a class="cta" id="stripeBtn" href="${esc(STRIPE_LINK)}">Unlock Cignetti + Saban · $0.99</a>` : `<button class="cta" disabled>Unlock Cignetti + Saban · $0.99 · checkout opens soon</button>`}
+    <h2 class="headline" style="font-size:clamp(40px,10vw,72px)">${esc(m.label)}<small>${esc(m.tagline)}</small></h2>
+    ${ladderHTML(mode)}
+    <div class="pitch">One $0.99 unlock gets you <b>both</b>, with a new drive of each every day.</div>
+    ${native ? `<button class="cta" id="buyBtn">Unlock both modes · ${esc(window.Native.price || '$0.99')}</button><button class="cta ghost" id="restoreBtn">Restore purchase</button><div class="fine" id="buyNote"></div>`
+      : `${configured ? `<a class="cta" id="stripeBtn" href="${esc(STRIPE_LINK)}">Unlock both modes · $0.99</a>` : `<button class="cta" disabled>Unlock both modes · $0.99 · checkout opens soon</button>`}
          <details class="restore"><summary>I already paid, or I have a gift code</summary><div class="fine">Paste the unlock code from your first device, the receipt email Stripe sent you, or a friend's GIFT code.</div><div class="row"><input id="codeIn" class="codein" placeholder="Unlock code, receipt email, or GIFT-…" autocomplete="off"><button class="cta ghost" id="codeBtn">Unlock</button></div><div class="fine" id="buyNote"></div></details>
          <div class="fine">Card payments by Stripe. One payment unlocks Cignetti mode and Saban mode, forever. It's also in the <a href="https://ncaa2mindrill.com/app">app</a>.</div>`}
   </section>`;
@@ -866,7 +878,9 @@ function benchLine(key, r) {
 // ---------- screens ----------
 let tab = 'daily';
 let survView = 'run';
+function paintLocks() { document.documentElement.classList.toggle('locked', !premiumUnlocked()); }
 function setTab(t) {
+  paintLocks();
   if (t === 'practice') { survView = 'library'; t = 'survival'; } // the drive library lives under Survival
   tab = t;
   for (const [id, k] of [['tabDaily', 'daily'], ['tabSaban', 'saban'], ['tabCignetti', 'cignetti'], ['tabSurvival', 'survival'], ['tabCoaches', 'coaches']]) $('#' + id).setAttribute('aria-pressed', String(k === t));
@@ -1896,6 +1910,7 @@ function showSurvival(kind = 'free') {
 function survHome(kind) { if (kind === 'cignetti' || kind === 'saban') { hardView[kind] = 'survival'; setTab(kind); } else { survView = 'run'; setTab('survival'); } }
 function renderSurvPaywall(round) {
   renderPaywall('cignetti');
+  const h = $('.paywall .headline'); if (h) h.innerHTML = 'The deep end<small>Rounds 7 and up</small>';
   const e = $('.paywall .eyebrow'); if (e) e.textContent = `Survival · round ${round} · the deep end is locked`;
   const p = $('.paywall .pitch'); if (p) p.insertAdjacentHTML('afterbegin', `You survived ${round - 1}. Rounds 7 and up are Cignetti and Saban drives, which come with the unlock. Your run is saved here until you come back.<br><br>`);
 }
@@ -2054,7 +2069,7 @@ fetch('data.json').then(r => r.json()).then(d => {
   D.free = D.std.filter(s => s.wp0 >= 0.30 && s.wp0 <= 0.75 && !isHopeless(s));
   D.hard = D.scen.filter(s => !s.feat && isHard(s)).sort((a, b) => a.id - b.id);
   D.cig = D.scen.filter(s => !s.feat && isCig(s)).sort((a, b) => a.id - b.id);
-  if (window.Native && window.Native.init) window.Native.init().then(() => { if (isHardMode(tab)) setTab(tab); }).catch(() => {});
+  if (window.Native && window.Native.init) window.Native.init().then(() => { paintLocks(); if (isHardMode(tab)) setTab(tab); }).catch(() => {});
   let seen = false; try { seen = localStorage.getItem('cfb2md:seen') === '1'; localStorage.setItem('cfb2md:seen', '1'); } catch { seen = true; }
   beacon('/hit', { token: playerToken(), src: firstSource() });
   const back = location.search.includes('unlock=');

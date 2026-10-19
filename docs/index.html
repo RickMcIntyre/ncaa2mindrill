@@ -95,6 +95,25 @@ nav.tabs .saban-tab { border-color: #6b2a2a; }
 :root.cignetti { --amber: #e0b43a; }
 nav.tabs .cig-tab[aria-pressed="true"] { background: var(--amber); color: #1b1203; border-color: var(--amber); }
 nav.tabs .cig-tab { border-color: #6b5a1e; }
+/* the two paid modes: a difficulty badge, and a lock until the unlock lands */
+nav.tabs .mode-tab { display: inline-flex; align-items: center; gap: 6px; }
+nav.tabs .mode-tab .lk { width: 10px; height: 12px; flex: 0 0 auto; display: none; }
+:root.locked nav.tabs .mode-tab .lk { display: block; }
+nav.tabs .mode-tab .lvl { font-size: 10px; letter-spacing: .1em; line-height: 1.2; padding: 2px 6px 1px; border-radius: 999px; }
+nav.tabs .cig-tab .lvl { background: rgba(224, 180, 58, .16); color: #e0b43a; }
+nav.tabs .saban-tab .lvl { background: rgba(217, 67, 58, .2); color: #ff7b70; }
+nav.tabs .mode-tab[aria-pressed="true"] .lvl { background: rgba(0, 0, 0, .2); color: inherit; }
+.ladder { display: grid; gap: 6px; text-align: left; }
+.ladder .rung { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; align-items: baseline; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.ladder .nm { font-family: var(--f-ui); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; font-size: 17px; }
+.ladder .nm i { font-style: normal; font-size: 11px; letter-spacing: .1em; padding: 2px 7px 1px; border-radius: 999px; margin-left: 8px; vertical-align: 2px; background: rgba(238, 242, 246, .1); color: var(--muted); }
+.ladder .cignetti .nm i { background: rgba(224, 180, 58, .16); color: #e0b43a; }
+.ladder .saban .nm i { background: rgba(217, 67, 58, .2); color: #ff7b70; }
+.ladder .px { font-family: var(--f-ui); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 12px; color: var(--muted); }
+.ladder .ds { grid-column: 1 / -1; font-size: 14px; color: var(--muted); }
+.ladder .rung.here { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); }
+.ladder .rung.here .px { color: var(--amber); }
+.ladder .rung.here .ds { color: var(--chalk); }
 .paywall .cta { display: block; text-align: center; text-decoration: none; }
 .subnav { display: flex; justify-content: center; gap: 6px; margin: -4px 0 10px; }
 .subnav button { font-family: var(--f-ui); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
@@ -345,8 +364,8 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
   </header>
   <nav class="tabs" aria-label="Mode">
     <button id="tabDaily" aria-pressed="true">Daily</button>
-    <button id="tabCignetti" aria-pressed="false" class="cig-tab">Cignetti</button>
-    <button id="tabSaban" aria-pressed="false" class="saban-tab">Saban mode</button>
+    <button id="tabCignetti" aria-pressed="false" class="cig-tab mode-tab" aria-label="Cignetti mode, hard"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Cignetti<span class="lvl">Hard</span></button>
+    <button id="tabSaban" aria-pressed="false" class="saban-tab mode-tab" aria-label="Saban mode, hardest"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Saban<span class="lvl">Hardest</span></button>
     <button id="tabSurvival" aria-pressed="false">Survival</button>
     <button id="tabCoaches" aria-pressed="false">Coaches</button>
   </nav>
@@ -369,8 +388,8 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
     <li><b>Pick your personnel.</b> 10, 11, 12, 13, 21 or 22: backs, tight ends, receivers. Heavy groups block and pull the defense in; four wide spreads it out. When you sub, the defense subs too.</li>
     <li><b>Bench anyone.</b> Tap a player chip under the field to swap in a backup at that spot, including the backup quarterback. His season numbers come with him.</li>
     <li><b>Survival.</b> A random drive, then a harder one, then a harder one. Win the game to stay alive; lose once and the run is over. Rounds 7 and up are Cignetti and Saban drives. Cignetti and Saban mode each have their own Survival run inside their own pool.</li>
-    <li><b>Saban mode.</b> A second daily drive from the hopeless end of the pool: 10% to win or worse, or two scores down. Nobody is expected to win these.</li>
-    <li><b>Cignetti mode.</b> One shelf up: 10–25% to win. Hard, not hopeless. Google yourself afterward.</li>
+    <li><b>Cignetti mode · hard.</b> A second daily drive, a shelf down from the regular one: 10–25% to win at the start, graded on a steeper curve than the real coach. Hard, not hopeless. Google yourself afterward.</li>
+    <li><b>Saban mode · hardest.</b> A third daily drive, from the hopeless end: 10% to win or worse, or two scores down. Only the best call grades green. Nobody is expected to win these. One $0.99 unlock opens both modes.</li>
   </ol>
   <button class="cta" id="helpClose">Let's go</button>
 </dialog>
@@ -406,7 +425,7 @@ window.ADS = { gtag: '', meta: '1054087884349992', x: '', xEvents: { purchase: '
 <script src="native.js?v=2"></script>
 <script src="sound.js?v=6"></script>
 <script src="anim.js?v=11"></script>
-<script src="app.js?v=42"></script>
+<script src="app.js?v=43"></script>
 
 </body>
 </html>
