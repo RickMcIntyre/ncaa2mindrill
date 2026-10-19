@@ -578,7 +578,10 @@ function firstSource() {
   try {
     const had = localStorage.getItem(KEY); if (had) return had;
     const q = new URLSearchParams(location.search);
-    const s = (q.get('utm_source') || q.get('s') || '').toLowerCase(), c = (q.get('utm_campaign') || q.get('c') || '').toLowerCase();
+    // no tag on the link: fall back to where the click came from (X wraps links in t.co)
+    let ref = ''; try { ref = new URL(document.referrer).hostname.replace(/^www\./, ''); } catch { /* no referrer */ }
+    const fromRef = /(^|\.)t\.co$|(^|\.)x\.com$|twitter\.com$/.test(ref) ? 'x' : /reddit\.com$/.test(ref) ? 'reddit' : /google\./.test(ref) ? 'google' : /facebook\.com$|instagram\.com$/.test(ref) ? 'meta' : /tiktok\.com$/.test(ref) ? 'tiktok' : ref && !/ncaa2mindrill\.com$/.test(ref) ? ref.slice(0, 30) : '';
+    const s = (q.get('utm_source') || q.get('s') || fromRef || '').toLowerCase(), c = (q.get('utm_campaign') || q.get('c') || '').toLowerCase();
     const src = (s ? s + (c ? '/' + c : '') : 'direct').replace(/[^\w./-]/g, '').slice(0, 48) || 'direct';
     localStorage.setItem(KEY, src); return src;
   } catch { return 'direct'; }
