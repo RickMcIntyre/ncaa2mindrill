@@ -1991,7 +1991,7 @@ $('#helpBtn').onclick = () => $('#helpDlg').showModal();
 $('#helpClose').onclick = () => $('#helpDlg').close();
 $('#statsBtn').onclick = showStats;
 const sndBtn = $('#soundBtn');
-if (sndBtn) { const paint = () => { sndBtn.textContent = window.Sound && Sound.on ? '🔊' : '🔇'; sndBtn.setAttribute('aria-pressed', String(!!(window.Sound && Sound.on))); }; paint(); sndBtn.onclick = () => { if (!window.Sound) return; try { Sound.set(!Sound.on); } catch { /* audio unavailable */ } paint(); try { if (Sound.on) { Sound.play('toggle'); if (G && !G.done && G.st && /game/.test(app.firstElementChild?.className || '')) Sound.ambience(crowdLevel()); } else Sound.ambience(0); } catch { /* never break the button */ } }; }
+if (sndBtn) { const paint = () => { sndBtn.textContent = window.Sound && Sound.on ? '🔊' : '🔇'; sndBtn.setAttribute('aria-pressed', String(!!(window.Sound && Sound.on))); }; paint(); sndBtn.onclick = () => { if (!window.Sound) return; try { Sound.set(!Sound.on); } catch { /* audio unavailable */ } paint(); try { if (Sound.on) { Sound.play('toggle'); if (G && !G.done && G.st && /game/.test(app.firstElementChild?.className || '')) Sound.ambience(crowdLevel()); } else Sound.ambience(0); } catch { /* never break the button */ } }; window.addEventListener('storage', e => { if (e.key === 'cfb2md:sound') paint(); }); }
 $('#statsClose').onclick = () => $('#statsDlg').close();
 
 fetch('data.json').then(r => r.json()).then(d => {

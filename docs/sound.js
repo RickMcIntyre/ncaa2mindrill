@@ -60,7 +60,7 @@
       }
     }
     A = { c, master, verb, noise, clap, bed: null, bufs: null };
-    renderCrowd();                            // the voiced crowd renders in the background; noise stands in until it lands
+    loadCrowd();                              // real recordings fetch in the background; noise stands in until they land
     return A;
   }
   const T = () => A.c.currentTime;
@@ -87,6 +87,19 @@
   function filt(type, f, Q = 1) { const b = A.c.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = Q; return b; }
 
 
+
+  // ---------- the real crowd ----------
+  // Recordings of actual crowds (CC0, from the Internet Archive; see README), fetched only once sound is on.
+  // If the fetch or decode fails (offline, old browser), the synthesized crowd below takes over.
+  const CROWD_FILES = { murmur: 'crowd-bed.mp3', roar: 'crowd-roar.mp3', roar2: 'crowd-roar2.mp3', groan: 'crowd-groan.mp3', ooh: 'crowd-ooh.mp3', boo: 'crowd-boo.mp3', charge: 'crowd-charge.mp3' };
+  function loadCrowd() {
+    if (!A || A.loading) return; A.loading = true;
+    Promise.allSettled(Object.entries(CROWD_FILES).map(([k, f]) =>
+      fetch('sound/' + f, { cache: 'force-cache' }).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.arrayBuffer(); })
+        .then(ab => new Promise((res, rej) => A.c.decodeAudioData(ab, res, rej)))
+        .then(buf => { (A.bufs = A.bufs || {})[k] = buf; if (k === 'murmur' && A.bed && A.bed.kind !== 'voices') ambience(lastLevel); })
+    )).then(() => { if (!A.bufs || !A.bufs.murmur || !A.bufs.roar) renderCrowd(); });
+  }
   // ---------- crowd voices ----------
   // A crowd is thousands of voices, not noise. Render a few seconds of synthesized fans (each with its own pitch,
   // vowel, contour and seat) into buffers with OfflineAudioContext, normalize them, and play those. Until a render
@@ -165,8 +178,8 @@
   function cheer(size, t0 = T(), pan = 0) {
     if (size <= 0) return;
     const dur = 1.0 + 2.6 * size, peak = 0.07 + 0.3 * size;
-    if (A.bufs && A.bufs.roar) {                       // the voiced crowd
-      playBuf(A.bufs.roar, t0, { gain: 0.12 + 0.45 * size, pan, rate: 0.95 + Math.random() * 0.1, dur: Math.min(5, dur), attack: 0.12 + 0.25 * size, release: 0.8 + 0.6 * size });
+    if (A.bufs && A.bufs.roar) {                       // the real crowd
+      playBuf(A.bufs.roar2 && Math.random() < 0.45 ? A.bufs.roar2 : A.bufs.roar, t0, { gain: 0.12 + 0.45 * size, pan, rate: 0.95 + Math.random() * 0.1, dur: Math.min(5, dur), attack: 0.12 + 0.25 * size, release: 0.8 + 0.6 * size });
       const cl = A.c.createBufferSource(); cl.buffer = A.clap; cl.loop = true; const cg = out(0, 0.4, pan);
       env(cg.gain, t0 + 0.15, 0.3, 0.1 * size, dur * 0.3, dur * 0.6); cl.connect(cg); cl.start(t0 + 0.15, Math.random() * 0.5, dur);
       return;
@@ -331,7 +344,10 @@
     const t = T();
     bumpHype(HYPE[kind] || 0);
     switch (kind) {
-      case 'td': crowd(true, 1, ctx, t); charge(t + 0.35, ctx.home === false && !ctx.neutral ? 0.035 : 0.07, ctx.home === false && !ctx.neutral ? -0.5 : 0); break;
+      case 'td': crowd(true, 1, ctx, t);
+        if (A.bufs && A.bufs.charge && ctx.home !== false) playBuf(A.bufs.charge, t + 0.5, { gain: 0.14, rate: 0.98 + Math.random() * 0.04, release: 0.7 });
+        else charge(t + 0.35, ctx.home === false && !ctx.neutral ? 0.035 : 0.07, ctx.home === false && !ctx.neutral ? -0.5 : 0);
+        break;
       case 'big': crowd(true, 0.65, ctx, t); break;
       case 'first': crowd(true, 0.35, ctx, t); break;
       case 'good': crowd(true, 0.8, ctx, t); break;
@@ -339,7 +355,7 @@
       case 'turnover': gasp(t); crowd(false, 1, ctx, t + 0.25); break;
       case 'inc': crowd(false, 0.28, ctx, t + 0.05); break;
       case 'trick': ooh(0.7, t); break;
-      case 'flag': whistle(t, 0.18, 0.06); whistle(t + 0.24, 0.18, 0.06); whistle(t + 0.48, 0.5, 0.06); setTimeout(() => on && A && ooh(0.25), 700); break;
+      case 'flag': whistle(t, 0.18, 0.06); whistle(t + 0.24, 0.18, 0.06); whistle(t + 0.48, 0.5, 0.06); if (A.bufs && A.bufs.boo) playBuf(A.bufs.boo, t + 0.8, { gain: 0.11, rate: 0.97 + Math.random() * 0.06 }); else setTimeout(() => on && A && ooh(0.25), 700); break;
       case 'spike': whistle(t + 0.1, 0.25, 0.04, 0.5); break;
       default: return false;
     }
@@ -347,19 +363,27 @@
   }
   const safe = f => (...a) => { if (!on) return; try { if (!graph()) return; return f(...a); } catch (e) { if (window.__SOUND_DEBUG) throw e; /* audio unavailable */ } };
 
+
+  function applyOn(v) {
+    on = v;
+    try {
+      if (on) { if (graph()) A.master.gain.setTargetAtTime(0.9, T(), 0.05); }
+      else if (A) {
+        A.master.gain.setTargetAtTime(0, T(), 0.03);
+        setTimeout(() => { if (!on && A) A.c.suspend().catch(() => {}); }, 150);   // after the fade, stop the engine outright
+      }
+    } catch { /* audio unavailable: the flag still flipped */ }
+  }
+  // the toggle in one tab silences every other open tab too
+  window.addEventListener('storage', e => { if (e.key === KEY && e.newValue != null) applyOn(e.newValue === '1'); });
+
   window.Sound = {
     get on() { return on; },
     get reacted() { return reacted; },
     get _graph() { return A; },          // for tests: the master bus
     set(v) {
-      on = !!v; try { localStorage.setItem(KEY, on ? '1' : '0'); } catch { /* ignore */ }
-      try {
-        if (on) { if (graph()) A.master.gain.setTargetAtTime(0.9, T(), 0.05); }
-        else if (A) {
-          A.master.gain.setTargetAtTime(0, T(), 0.03);
-          setTimeout(() => { if (!on && A) A.c.suspend().catch(() => {}); }, 150);   // after the fade, stop the engine outright
-        }
-      } catch { /* audio unavailable: the flag still flipped */ }
+      try { localStorage.setItem(KEY, v ? '1' : '0'); } catch { /* ignore */ }
+      applyOn(!!v);
     },
     beginPlay() { reacted = false; },
     play: safe((name, ctx = {}) => {
