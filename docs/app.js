@@ -981,8 +981,13 @@ function logHTML() {
 function soundCtx() { return { home: !!(G && G.sc && G.sc.home), neutral: !!(G && G.sc && G.sc.neutral) }; }
 function crowdLevel() {
   if (!G || !G.st || G.done) return 0;
-  const late = Math.max(0, Math.min(1, 1 - G.st.T / 240)), close = Math.abs(G.st.s) <= 8 ? 1 : 0.55;
-  return 0.3 + 0.7 * late * close;
+  const st = G.st;
+  const late = Math.max(0, Math.min(1, 1 - st.T / 240)), close = Math.abs(st.s) <= 8 ? 1 : 0.55;
+  let lvl = 0.25 + 0.55 * late * close;           // the stands fill in as a close game gets late
+  if (st.down >= 3) lvl += G.sc.neutral ? 0.1 : G.sc.home ? -0.08 : 0.3;   // the home crowd roars on the road team's third down, hushes for its own offense
+  if (st.ytg <= 20) lvl += 0.15;                  // red zone
+  if (st.T <= 60) lvl += 0.15;                    // the last minute
+  return Math.max(0.15, Math.min(1.1, lvl));
 }
 function resultMini() {
   const L = G.last; if (!L) return '';

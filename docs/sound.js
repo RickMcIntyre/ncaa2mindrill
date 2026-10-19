@@ -59,7 +59,8 @@
         for (let i = 0; i < dur; i++) { const w = Math.random() * 2 - 1, hp = w - prev; prev = w; d[at + i] += hp * g * Math.exp(-i / (dur * 0.35)); }
       }
     }
-    A = { c, master, verb, noise, clap, bed: null };
+    A = { c, master, verb, noise, clap, bed: null, bufs: null };
+    renderCrowd();                            // the voiced crowd renders in the background; noise stands in until it lands
     return A;
   }
   const T = () => A.c.currentTime;
@@ -85,11 +86,89 @@
   }
   function filt(type, f, Q = 1) { const b = A.c.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = Q; return b; }
 
+
+  // ---------- crowd voices ----------
+  // A crowd is thousands of voices, not noise. Render a few seconds of synthesized fans (each with its own pitch,
+  // vowel, contour and seat) into buffers with OfflineAudioContext, normalize them, and play those. Until a render
+  // lands, the old filtered-noise versions stand in. "Hype" is the crowd's memory: big plays raise it, it decays
+  // over ~40 seconds, and the bed under everything follows situation + hype.
+  let hype = 0, hypeAt = 0, lastLevel = 0;
+  const HYPE = { td: .55, turnover: .5, good: .4, big: .35, bad: .25, trick: .2, first: .15, flag: .1, inc: .05, spike: .05 };
+  const hypeNow = () => A ? hype * Math.exp(-Math.max(0, T() - hypeAt) / 40) : 0;
+  function bumpHype(x) { if (!x) return; hype = Math.min(1, hypeNow() + x); hypeAt = T(); ambience(lastLevel); }
+  // one fan: a sawtooth through two moving formants, with a pitch contour and its own envelope and seat (pan)
+  function fan(off, t0, f0, dur, vfrom, vto, contour, gain, pan) {
+    const o = off.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(Math.max(50, f0 * contour[0]), t0);
+    for (let i = 1; i < contour.length; i++) o.frequency.linearRampToValueAtTime(Math.max(50, f0 * contour[i]), t0 + dur * i / (contour.length - 1));
+    const amp = off.createGain(); env(amp.gain, t0, 0.02 + Math.random() * 0.06, gain, dur * 0.45, dur * 0.55);
+    let dest = amp;
+    if (off.createStereoPanner) { const p2 = off.createStereoPanner(); p2.pan.value = pan; amp.connect(p2); dest = p2; }
+    dest.connect(off.destination);
+    for (let k = 0; k < 2; k++) {
+      const b = off.createBiquadFilter(); b.type = 'bandpass'; b.Q.value = 5 - k * 2;
+      b.frequency.setValueAtTime(vfrom[k], t0); b.frequency.linearRampToValueAtTime(vto[k], t0 + dur);
+      const m = off.createGain(); m.gain.value = k ? 0.5 : 1;
+      o.connect(b); b.connect(m); m.connect(amp);
+    }
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  const rf = () => 100 * Math.pow(2, Math.random() * 1.8);   // 100-350 Hz: men, women, kids
+  function renderBuf(name, secs, plan) {
+    const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OC) return Promise.resolve();
+    const off = new OC(2, Math.ceil(A.c.sampleRate * secs), A.c.sampleRate);
+    plan(off, secs);
+    return off.startRendering().then(buf => {
+      let peak = 0;                                   // normalize, so mixing is by gain alone
+      for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > peak) peak = v; } }
+      if (peak > 0) for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch), k = 0.85 / peak; for (let i = 0; i < d.length; i++) d[i] *= k; }
+      (A.bufs = A.bufs || {})[name] = buf;
+    }).catch(() => {});
+  }
+  function renderCrowd() {
+    if (!A || A.rendering) return; A.rendering = true;
+    renderBuf('murmur', 8, off => {                   // 150 people talking: short quiet syllable runs, loopable
+      for (let v = 0; v < 150; v++) {
+        const f0 = rf(), pan = Math.random() * 1.6 - 0.8; let t = Math.random() * 7.2;
+        const n = 2 + Math.floor(Math.random() * 4);
+        for (let k = 0; k < n && t < 7.5; k++) { const d = 0.07 + Math.random() * 0.15, vw = [350 + Math.random() * 500, 900 + Math.random() * 900]; fan(off, t, f0 * (0.9 + Math.random() * 0.2), d, vw, vw, [1, 1.06, 0.94], 0.05 + Math.random() * 0.05, pan); t += d + 0.04 + Math.random() * 0.2; }
+      }
+    })
+    .then(() => renderBuf('roar', 5, off => {         // 240 fans shouting, bunched at the front, plus long whoos
+      for (let v = 0; v < 240; v++) {
+        const t0 = Math.pow(Math.random(), 1.6) * 1.5, dur = 0.5 + Math.random() * 1.1, yeah = Math.random() < 0.7;
+        fan(off, t0, rf(), dur, yeah ? [620, 1750] : [780, 1250], yeah ? [800, 1250] : [700, 1100], [0.92, 1.18, 1.06, 0.86], 0.5 + Math.random() * 0.5, Math.random() * 1.8 - 0.9);
+      }
+      for (let v = 0; v < 50; v++) { const t0 = 0.3 + Math.random() * 1.8; fan(off, t0, rf() * 2.2, 0.7 + Math.random() * 0.9, [450, 950], [500, 1050], [0.85, 1.3, 1.15], 0.35, Math.random() * 1.8 - 0.9); }
+    }))
+    .then(() => renderBuf('groan', 2.6, off => {      // "awww", pitch falling
+      for (let v = 0; v < 170; v++) fan(off, Math.pow(Math.random(), 1.4) * 0.5, rf(), 0.7 + Math.random() * 0.9, [700, 1150], [520, 850], [1.04, 0.97, 0.8], 0.6 + Math.random() * 0.4, Math.random() * 1.8 - 0.9);
+    }))
+    .then(() => renderBuf('ooh', 2.2, off => {        // "ooh", rising: anticipation
+      for (let v = 0; v < 150; v++) fan(off, Math.pow(Math.random(), 1.4) * 0.4, rf(), 0.55 + Math.random() * 0.7, [330, 780], [430, 980], [0.92, 1.12, 1.0], 0.6 + Math.random() * 0.4, Math.random() * 1.8 - 0.9);
+    }))
+    .then(() => { if (A.bed && A.bed.kind === 'noise') ambience(lastLevel); });   // swap the jet for people mid-game
+  }
+  function playBuf(buf, t0, { gain = 0.2, pan = 0, rate = 1, attack = 0.08, dur, release = 0.5 } = {}) {
+    const total = Math.min(dur || buf.duration / rate, buf.duration / rate);
+    const s = A.c.createBufferSource(); s.buffer = buf; s.playbackRate.value = rate;
+    const g = out(0, 0.5, pan);
+    env(g.gain, t0, attack, gain, Math.max(0.05, total - attack - release), release);
+    s.connect(g); s.start(t0); s.stop(t0 + total + 0.15);
+  }
+
   // ---------- the crowd ----------
   // a roar: noise through three broad "voice" bands, swelling in and fading out, with applause and a few "whoo"s
   function cheer(size, t0 = T(), pan = 0) {
     if (size <= 0) return;
     const dur = 1.0 + 2.6 * size, peak = 0.07 + 0.3 * size;
+    if (A.bufs && A.bufs.roar) {                       // the voiced crowd
+      playBuf(A.bufs.roar, t0, { gain: 0.12 + 0.45 * size, pan, rate: 0.95 + Math.random() * 0.1, dur: Math.min(5, dur), attack: 0.12 + 0.25 * size, release: 0.8 + 0.6 * size });
+      const cl = A.c.createBufferSource(); cl.buffer = A.clap; cl.loop = true; const cg = out(0, 0.4, pan);
+      env(cg.gain, t0 + 0.15, 0.3, 0.1 * size, dur * 0.3, dur * 0.6); cl.connect(cg); cl.start(t0 + 0.15, Math.random() * 0.5, dur);
+      return;
+    }
     const g = out(1, 0.5, pan), amp = A.c.createGain(); amp.connect(g);
     env(amp.gain, t0, 0.18 + 0.2 * size, peak, dur * 0.35, dur * 0.65);
     const src = noiseSrc(t0, dur + 0.5);
@@ -115,8 +194,12 @@
       const m = A.c.createGain(); m.gain.value = k ? 0.6 : 1.4; src.connect(b); b.connect(m); m.connect(amp);
     }
   }
-  const groan = (size, t0, pan) => size > 0 && vowelCrowd([760, 1250], [520, 900], 1.0 + 1.2 * size, 0.08 + 0.24 * size, t0, pan);
-  const ooh = (size, t0, pan) => vowelCrowd([300, 800], [420, 1050], 0.8 + 0.6 * size, 0.07 + 0.18 * size, t0, pan);
+  const groan = (size, t0, pan) => { if (size <= 0) return; t0 = t0 == null ? T() : t0;
+    if (A.bufs && A.bufs.groan) return playBuf(A.bufs.groan, t0, { gain: 0.1 + 0.34 * size, pan: pan || 0, rate: 0.93 + Math.random() * 0.12 });
+    vowelCrowd([760, 1250], [520, 900], 1.0 + 1.2 * size, 0.08 + 0.24 * size, t0, pan); };
+  const ooh = (size, t0, pan) => { t0 = t0 == null ? T() : t0;
+    if (A.bufs && A.bufs.ooh) return playBuf(A.bufs.ooh, t0, { gain: 0.09 + 0.22 * size, pan: pan || 0, rate: 0.95 + Math.random() * 0.1 });
+    vowelCrowd([300, 800], [420, 1050], 0.8 + 0.6 * size, 0.07 + 0.18 * size, t0, pan); };
   function gasp(t0 = T()) {
     const g = out(1, 0.4), amp = A.c.createGain(); amp.connect(g); env(amp.gain, t0, 0.12, 0.12, 0.05, 0.25);
     const src = noiseSrc(t0, 0.5), b = filt('bandpass', 1500, 0.8); b.frequency.setValueAtTime(900, t0); b.frequency.linearRampToValueAtTime(2400, t0 + 0.2); src.connect(b); b.connect(amp);
@@ -210,18 +293,23 @@
   function ambience(level) {
     if (!graph()) return;
     const now = T();
-    if (!A.bed && level > 0) {
-      const src = A.c.createBufferSource(); src.buffer = A.noise; src.loop = true; src.playbackRate.value = 0.97;
-      const lp = filt('lowpass', 1100, 0.5), bp = filt('bandpass', 520, 0.6), g = out(0, 0.6);
-      src.connect(lp); lp.connect(bp); bp.connect(g);
+    lastLevel = level;
+    const voices = !!(A.bufs && A.bufs.murmur);
+    if (A.bed && voices && A.bed.kind !== 'voices') { try { A.bed.src.stop(); A.bed.lfo.stop(); } catch { /* done */ } A.bed = null; }
+    if (!A.bed && (level > 0 || hypeNow() > 0.05)) {
+      const g = out(0, 0.6);
       const lfo = A.c.createOscillator(), lg = A.c.createGain(); lfo.frequency.value = 0.11; lg.gain.value = 0; lfo.connect(lg); lg.connect(g.gain);
+      let src;
+      if (voices) { src = A.c.createBufferSource(); src.buffer = A.bufs.murmur; src.loop = true; src.connect(g); }
+      else { src = A.c.createBufferSource(); src.buffer = A.noise; src.loop = true; src.playbackRate.value = 0.97; const lp = filt('lowpass', 900, 0.5), bp = filt('bandpass', 480, 0.6); src.connect(lp); lp.connect(bp); bp.connect(g); }
       src.start(now); lfo.start(now);
-      A.bed = { src, g, lg, lfo };
+      A.bed = { src, g, lg, lfo, kind: voices ? 'voices' : 'noise' };
     }
     if (!A.bed) return;
-    const target = Math.max(0, Math.min(1, level)) * 0.09;
-    A.bed.g.gain.cancelScheduledValues(now); A.bed.g.gain.setValueAtTime(A.bed.g.gain.value, now); A.bed.g.gain.linearRampToValueAtTime(target, now + 1.2);
-    A.bed.lg.gain.setValueAtTime(target * 0.35, now);   // the bed breathes
+    // situation from the game plus whatever hype is left over from the last big play
+    const target = Math.max(0, Math.min(1.25, level + hypeNow() * 0.5)) * (A.bed.kind === 'voices' ? 0.16 : 0.07);
+    A.bed.g.gain.cancelScheduledValues(now); A.bed.g.gain.setValueAtTime(Math.max(0.0001, A.bed.g.gain.value), now); A.bed.g.gain.linearRampToValueAtTime(target, now + 1.2);
+    A.bed.lg.gain.setValueAtTime(target * 0.3, now);   // the bed breathes
   }
 
   // ---------- what the game calls ----------
@@ -239,6 +327,7 @@
   const kindOf = text => Object.keys(POP).find(k => POP[k].includes(text)) || (text === 'FLAG' ? 'flag' : text && text.startsWith('SPIKE') ? 'spike' : null);
   function react(kind, ctx = {}) {
     const t = T();
+    bumpHype(HYPE[kind] || 0);
     switch (kind) {
       case 'td': crowd(true, 1, ctx, t); charge(t + 0.35, ctx.home === false && !ctx.neutral ? 0.035 : 0.07, ctx.home === false && !ctx.neutral ? -0.5 : 0); break;
       case 'big': crowd(true, 0.65, ctx, t); break;
