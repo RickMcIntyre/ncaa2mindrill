@@ -1650,78 +1650,90 @@ function shareText() {
   const surv = G.mode === 'survival' && d.surv ? `\nSurvival · ${d.surv.won ? `survived round ${d.surv.round}` : `run over after ${d.surv.streak}`}` : '';
   return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}${d.trophy ? ` · ${TROPHY[d.trophy].stamp}` : ''}${G.retry ? ' (retry)' : ''}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no && G.mode !== 'survival' ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}${surv}\n${G.grades.join('')}\nncaa2mindrill.com`;
 }
-// 1200x630 share card, in the look people already screenshot from the NFL game: the score, the checkmark grid,
+// 1200-wide share card, in the look people already screenshot from the NFL game: the score, the checkmark grid,
 // the YOU VS COACH box, the real-game footnote - plus who you called it like, which theirs doesn't have.
+// Shared cards get looked at about 350px wide on a phone, so no text on it is under 34px, and the card
+// grows taller with the grid rather than shrinking anything.
 function drawShareCard(cv) {
   const sc = G.sc, d = G.done, gl = gameLabel(sc), off = T_(sc.off), def = T_(sc.dfn);
-  const c = cv.getContext('2d'), W = cv.width, H = cv.height;
   const UI = '"Saira Condensed", "Arial Narrow", sans-serif', BODY = '"Barlow", "Segoe UI", sans-serif';
-  const CHALK = '#eef2f6', MUTED = '#8ea0b8', AMBER = '#e9b949', GREEN = '#4cc27a', RED = '#ff8d7e';
+  const CHALK = '#eef2f6', MUTED = '#a7b5c8', AMBER = '#e9b949', GREEN = '#4cc27a', RED = '#ff8d7e';
+  const W = 1200;
+  // the grid: one tile per call, the biggest tiles that fit in two rows
+  const marks = G.snaps.length ? G.snaps.map(x => x.e) : G.grades.slice();
+  const per = (t, g) => Math.floor((W - 220 + g) / (t + g));
+  const [tile, gap] = [[56, 10], [46, 8], [38, 7]].find(([t, g]) => Math.ceil(marks.length / per(t, g)) <= 2) || [30, 6];
+  const rows = []; for (let i = 0; i < marks.length; i += per(tile, gap)) rows.push(marks.slice(i, i + per(tile, gap)));
+  const shown = rows.slice(0, 3);
+  // lay out top to bottom first; setting the size clears the canvas
+  const yEyebrow = 66, yBig = 168, yTiles = 196;
+  const by = yTiles + Math.max(1, shown.length) * (tile + gap) - gap + 26, bh = 250;
+  const res = resemblance();
+  const yLike = by + bh + 54, yFoot = res ? yLike + 52 : yLike, py = yFoot + 32, ph = 64;
+  const H = py + ph + 30;
+  cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
   c.fillStyle = '#0e1118'; c.fillRect(0, 0, W, H);
-  c.fillStyle = off.color; c.fillRect(0, 0, 12, H); c.fillStyle = def.color; c.fillRect(W - 12, 0, 12, H);
+  c.fillStyle = off.color; c.fillRect(0, 0, 14, H); c.fillStyle = def.color; c.fillRect(W - 14, 0, 14, H);
   c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-  const fit = (text, font, maxW) => { c.font = font; let fs = +font.match(/(\d+)px/)[1]; while (c.measureText(text).width > maxW && fs > 20) { fs -= 2; c.font = font.replace(/\d+px/, fs + 'px'); } };
+  const fit = (text, font, maxW) => { c.font = font; let fs = +font.match(/(\d+)px/)[1]; while (c.measureText(text).width > maxW && fs > 24) { fs -= 2; c.font = font.replace(/\d+px/, fs + 'px'); } };
+  const line = (text, font, color, y, maxW) => { c.fillStyle = color; fit(text, font, maxW); c.fillText(text, W / 2, y); };
+  const box = (x, y, w, h, r) => { c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, r) : c.rect(x, y, w, h); };
+  const clear = d.trophy ? W - 540 : W - 160;      // the top two lines stay clear of the stamp
   // eyebrow: the situation and the game
-  c.fillStyle = AMBER; fit(`${headline(sc).toUpperCase()} \u00b7 ${gl.title.toUpperCase()} \u00b7 ${gl.when.toUpperCase()}`, `700 26px ${UI}`, W - 140);
-  c.fillText(`${headline(sc).toUpperCase()} \u00b7 ${gl.title.toUpperCase()} \u00b7 ${gl.when.toUpperCase()}`, W / 2, 58);
+  line(`${headline(sc)} \u00b7 ${gl.title} \u00b7 ${gl.when}`.toUpperCase(), `700 36px ${UI}`, AMBER, yEyebrow, clear);
   // the big line
   const decided = d.T <= 0 || d.wp >= 0.999 || d.wp <= 0.001;
   let big;
   if (d.surv) big = d.surv.won ? `SURVIVED \u00b7 ROUND ${d.surv.round}` : `RUN OVER \u00b7 ROUND ${d.surv.round}`;
   else if (decided) big = d.os === d.ds ? `TO OVERTIME ${d.os}\u2013${d.ds}` : (d.os > d.ds || d.wp >= 0.999) ? `YOU WIN ${d.os}\u2013${d.ds}` : `YOU LOSE ${d.os}\u2013${d.ds}`;
   else big = `${pct(d.wp)} TO WIN \u00b7 ${d.os}\u2013${d.ds}`;
-  c.fillStyle = CHALK; fit(big, `800 82px ${UI}`, W - 160); c.fillText(big, W / 2, 136);
-  // the grid: one tile per call, checks and marks
-  const marks = G.snaps.length ? G.snaps.map(x => x.e) : G.grades.slice();
-  const tile = marks.length > 24 ? 32 : 40, gap = 8, perRow = Math.floor((W - 200) / (tile + gap));
-  const rows = []; for (let i = 0; i < marks.length; i += perRow) rows.push(marks.slice(i, i + perRow));
-  let ty = 162;
-  for (const row of rows.slice(0, 3)) {
+  line(big, `800 100px ${UI}`, CHALK, yBig, clear);
+  // the grid
+  let ty = yTiles;
+  for (const row of shown) {
     let tx = W / 2 - (row.length * (tile + gap) - gap) / 2;
     for (const e of row) {
       c.fillStyle = e === '\ud83d\udfe9' ? '#3f9b53' : e === '\ud83d\udfe8' ? '#d9a13a' : '#c24a3f';
-      c.beginPath(); c.roundRect ? c.roundRect(tx, ty, tile, tile, 8) : c.rect(tx, ty, tile, tile); c.fill();
+      box(tx, ty, tile, tile, 9); c.fill();
       c.fillStyle = '#0e1118'; c.font = `800 ${Math.round(tile * 0.62)}px ${BODY}`;
       c.fillText(e === '\ud83d\udfe9' ? '\u2713' : e === '\ud83d\udfe8' ? '!' : '\u2717', tx + tile / 2, ty + tile * 0.72);
       tx += tile + gap;
     }
     ty += tile + gap;
   }
-  ty = Math.max(ty, 214);
   // the verdict box: you vs the coach
   const last = sc.coach.split(' ').slice(-1)[0].toUpperCase();
   const diff = d.wp - sc.cwp;
   const verdict = diff > 0.02 ? 'YOU DID BETTER' : diff < -0.02 ? `${last} DID BETTER` : 'DEAD EVEN';
   const vcol = diff > 0.02 ? GREEN : diff < -0.02 ? RED : CHALK;
-  const bx = 200, bw = W - 400, by = ty + 12, bh = 174;
-  c.strokeStyle = vcol; c.lineWidth = 2.5; c.beginPath(); c.roundRect ? c.roundRect(bx, by, bw, bh, 12) : c.rect(bx, by, bw, bh); c.stroke();
-  c.fillStyle = MUTED; c.font = `700 22px ${UI}`; c.fillText(`YOU  VS  ${sc.coach.toUpperCase()}`, W / 2, by + 36);
-  c.fillStyle = vcol; fit(verdict, `800 54px ${UI}`, bw - 60); c.fillText(verdict, W / 2, by + 92);
+  const bx = 140, bw = W - 280;
+  c.strokeStyle = vcol; c.lineWidth = 3; box(bx, by, bw, bh, 14); c.stroke();
+  line(`YOU  VS  ${sc.coach.toUpperCase()}`, `700 34px ${UI}`, MUTED, by + 46, bw - 60);
+  line(verdict, `800 70px ${UI}`, vcol, by + 120, bw - 60);
+  c.strokeStyle = '#2a3d57'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(bx + 26, by + 144); c.lineTo(bx + bw - 26, by + 144); c.stroke();
   const rowLine = (label, value, y) => {
-    c.textAlign = 'left'; c.fillStyle = CHALK; c.font = `600 24px ${BODY}`; c.fillText(label, bx + 34, y);
-    c.textAlign = 'right'; c.fillStyle = MUTED; c.fillText(value, bx + bw - 34, y);
+    c.font = `600 36px ${BODY}`;
+    c.textAlign = 'left'; c.fillStyle = CHALK; c.fillText(label, bx + 36, y);
+    c.textAlign = 'right'; c.fillStyle = '#c9d3df'; c.fillText(value, bx + bw - 36, y);
     c.textAlign = 'center';
   };
-  c.strokeStyle = '#2a3d57'; c.lineWidth = 1; c.beginPath(); c.moveTo(bx + 24, by + 112); c.lineTo(bx + bw - 24, by + 112); c.stroke();
-  rowLine('You', decided ? (d.os > d.ds ? `Won ${d.os}\u2013${d.ds}` : d.os < d.ds ? `Lost ${d.os}\u2013${d.ds}` : `Tied ${d.os}\u2013${d.ds}`) : `${pct(d.wp)} to win \u00b7 ${d.os}\u2013${d.ds}`, by + 140);
-  rowLine(sc.coach, `${sc.won ? 'Won' : 'Lost'} ${sc.final[0]}\u2013${sc.final[1]}`, by + 166);
+  rowLine('You', decided ? (d.os > d.ds ? `Won ${d.os}\u2013${d.ds}` : d.os < d.ds ? `Lost ${d.os}\u2013${d.ds}` : `Tied ${d.os}\u2013${d.ds}`) : `${pct(d.wp)} to win \u00b7 ${d.os}\u2013${d.ds}`, by + 190);
+  rowLine(sc.coach, `${sc.won ? 'Won' : 'Lost'} ${sc.final[0]}\u2013${sc.final[1]}`, by + 232);
   // who you called it like (ours, not theirs)
-  const res = resemblance();
-  if (res) { c.fillStyle = AMBER; fit(`YOU CALLED IT LIKE ${res.best.coach.toUpperCase()} (${res.best.school.toUpperCase()})`, `700 26px ${UI}`, W - 240); c.fillText(`YOU CALLED IT LIKE ${res.best.coach.toUpperCase()} (${res.best.school.toUpperCase()})`, W / 2, by + bh + 36); }
-  // the real-game footnote
-  const r = resultWord(sc).toLowerCase();
-  const art = /^[aeiou]/.test(r) ? 'an' : 'a';
-  const foot = /clock/.test(r) ? `In the real game (${gl.title} \u00b7 ${sc.year}), with ${sc.coach} calling it, the drive ran out the clock.`
-    : `In the real game (${gl.title} \u00b7 ${sc.year}), with ${sc.coach} calling it, the drive ended in ${art} ${r}.`;
-  c.fillStyle = MUTED; fit(foot, `500 22px ${BODY}`, W - 260); c.fillText(foot, W / 2, by + bh + 70);
+  if (res) line(`YOU CALLED IT LIKE ${res.best.coach} (${res.best.school})`.toUpperCase(), `700 36px ${UI}`, AMBER, yLike, W - 200);
+  // the real-game footnote, short enough for one line
+  const r = sc.result === 'FUMBLE' ? 'lost fumble' : resultWord(sc).toLowerCase();
+  const foot = /clock/.test(r) ? `In the real game, ${sc.coach}'s drive ran out the clock.`
+    : `In the real game, ${sc.coach}'s drive ended in ${/^[aeiou]/.test(r) ? 'an' : 'a'} ${r}.`;
+  line(foot, `500 34px ${BODY}`, MUTED, yFoot, W - 200);
   // the pill
-  const px = 200, pw = W - 400, py = 556, ph = 54;
-  c.fillStyle = '#f2f1ec'; c.beginPath(); c.roundRect ? c.roundRect(px, py, pw, ph, 12) : c.rect(px, py, pw, ph); c.fill();
-  c.fillStyle = '#15171c'; c.font = `800 26px ${UI}`; c.fillText("N C A A 2 M I N D R I L L . C O M", W / 2, py + 36);
+  c.fillStyle = '#f2f1ec'; box(220, py, W - 440, ph, 14); c.fill();
+  c.fillStyle = '#15171c'; c.font = `800 32px ${UI}`; c.fillText('N C A A 2 M I N D R I L L . C O M', W / 2, py + 43);
   if (d.trophy) {
-    c.save(); c.translate(W - 150, 80); c.rotate(-0.14);
-    c.strokeStyle = d.trophy === 'saban' ? '#d9433a' : AMBER; c.lineWidth = 5; c.strokeRect(-110, -28, 220, 56);
-    c.fillStyle = c.strokeStyle; c.font = `800 32px ${UI}`; c.fillText(TROPHY[d.trophy].stamp, 0, 11); c.restore();
+    c.save(); c.translate(W - 140, 74); c.rotate(-0.14);
+    c.strokeStyle = d.trophy === 'saban' ? '#d9433a' : AMBER; c.lineWidth = 5; c.strokeRect(-112, -30, 224, 60);
+    c.fillStyle = c.strokeStyle; c.font = `800 34px ${UI}`; c.fillText(TROPHY[d.trophy].stamp, 0, 12); c.restore();
   }
   c.textAlign = 'left';
 }
@@ -1763,7 +1775,7 @@ function renderFinal() {
       <div>${res ? `<div class="who">You call it like</div><div class="big" style="font-size:30px;line-height:1.1">${esc(res.best.coach)}</div><div class="end">${esc(res.best.school)} · ${pct(res.best.pass)} pass overall, ${pct(res.best.early)} on early downs, ${pct(res.best.pd)} on passing downs</div><div class="note">You: ${pct(res.me.pass)} pass, ${pct(res.me.early)} early downs, ${pct(res.me.pd)} passing downs, ${pct(res.me.deep)} deep shots (${res.n} calls). Next closest: ${esc(res.next.map(c => c.coach).join(', '))}. ${res.n < 6 ? 'Small sample. Coaches get a season; you got a drive.' : res.me.pass >= 0.8 ? 'Your tendencies, his résumé. You throw a lot.' : res.me.pass <= 0.35 ? 'Your tendencies, his résumé. You run a lot, on purpose, late.' : 'Your tendencies, his résumé.'}</div>` : '<div class="who">You call it like</div><div class="note">Call a few plays to get a match.</div>'}</div>
     </div>
     <div class="sharebox">
-      <canvas id="shareCanvas" width="1200" height="630" aria-label="Share card"></canvas>
+      <canvas id="shareCanvas" width="1200" height="740" aria-label="Share card"></canvas>
       <div class="row">
         <button class="cta" id="shareImg">Share</button>
         <button class="cta ghost" id="shareX">Post on X</button>
