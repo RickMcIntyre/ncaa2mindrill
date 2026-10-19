@@ -104,6 +104,7 @@
     W.lb.forEach(d => { const x = take('LB') || any(); if (x) d.num = x.num; });
     [...W.cb, W.nb, ...W.s].forEach(d => { const x = take('DB') || any(); if (x) d.num = x.num; });
     W.whoNum = spec.whoNum || null;
+    W.sfx = name => { if (W.live && window.Sound) window.Sound.fx(name); };
     // coverage: corners on the outside receivers, nickel on the slot, a backer or safety on the tight end
     const byY = [...W.recs].filter(a => a.pos !== 'RB').sort((a, b) => a.y - b.y);
     W.cover = new Map();
@@ -358,7 +359,7 @@
       if ((sc.sackAt || sc.pressureAt) && t >= (sc.sackAt ? sc.sackAt - 0.9 : sc.pressureAt) && !sc.freeRusher) { sc.freeRusher = W.look === 'blitz' ? W.lb[0] : W.dl[Math.random() < 0.5 ? 0 : 3]; if (sc.sackAt && W.whoNum) swapNum(W, sc.freeRusher, W.whoNum); }
       if (sc.sackAt && t >= sc.sackAt && !P.down && !sc.sacked) {
         const V = b.carrier && b.carrier.team === 'off' ? b.carrier : P; // whoever has it goes down (a blown-up trick catches the back)
-        sc.sacked = true; V.down = true; V.x = X(S.finalYtg); V.vx = V.vy = 0; V.plan = null; b.flying = null; b.carrier = S.strip ? null : V;
+        sc.sacked = true; V.down = true; W.sfx('bighit'); V.x = X(S.finalYtg); V.vx = V.vy = 0; V.plan = null; b.flying = null; b.carrier = S.strip ? null : V;
         if (sc.freeRusher) { sc.freeRusher.down = true; sc.freeRusher.x = V.x + 10; sc.freeRusher.y = V.y + 6; }
         if (S.strip) { b.loose = true; b.x = V.x - 14; b.y = V.y + 12; sc.recoverAt = t + 0.5; }
         sc.endAt = t + (S.strip ? 1.3 : 0.9);
@@ -369,7 +370,7 @@
         if (S.oob) q.plan.pts[1].y = q.plan.pts[1].y > MID ? BOTY - 4 : TOPY + 4;
         q.carrying = true; W.pops.push({ t, text: 'SCRAMBLE!', good: true }); assignTackler(W, sc, q);
       }
-      if (q.plan && !q.down && q.carrying) { if (q.follow(dt, 1)) { q.down = true; sc.endAt = t + 0.8; if (S.td) W.pops.push({ t, text: tdText(), good: true }); else if (S.twoPt) W.pops.push({ t, text: 'NO GOOD', bad: true }); else if (S.first) W.pops.push({ t, text: 'FIRST DOWN', good: true }); } }
+      if (q.plan && !q.down && q.carrying) { if (q.follow(dt, 1)) { q.down = true; if (!S.td && !S.oob) W.sfx('hit'); sc.endAt = t + 0.8; if (S.td) W.pops.push({ t, text: tdText(), good: true }); else if (S.twoPt) W.pops.push({ t, text: 'NO GOOD', bad: true }); else if (S.first) W.pops.push({ t, text: 'FIRST DOWN', good: true }); } }
       if (sc.recoverAt && t >= sc.recoverAt && b.loose) { b.loose = false; b.drop = false; const d = sc.freeRusher || W.lb[0]; b.carrier = d; d.x = b.x; d.y = b.y; }
       // hook and ladder: the catch was the first half; the pitch to the trailing back is the play
       if (sc.lateralAt && t >= sc.lateralAt && !sc.lateraled) {
@@ -412,12 +413,12 @@
         else if (isRun) { const c = sc.carrier; b.carrier = c; c.carrying = true; } // the toss arrives
         else if (S.kind === 'fg') { sc.endAt = t + 0.9; W.pops.push({ t, text: S.made ? 'GOOD!' : 'NO GOOD', bad: !S.made, good: S.made }); }
         else if (S.int) {
-          const p = sc.picker; p.x = b.x; p.y = b.y; b.carrier = p; p.returning = true; p.intercept = null;
+          const p = sc.picker; p.x = b.x; p.y = b.y; b.carrier = p; p.returning = true; p.intercept = null; W.sfx('catch');
           p.plan = { pts: [{ x: S.intTd ? 60 : Math.max(110, b.x - 120), y: clamp(p.y + rnd(-80, 80), TOPY + 20, BOTY - 20) }], i: 0 };
           W.pops.push({ t, text: S.intTd ? 'PICK SIX!' : 'INTERCEPTED!', bad: true });
           sc.endAt = t + (S.intTd ? 2.4 : 1.5);
         } else if (S.complete) {
-          const tg = sc.target; tg.x = b.x; tg.y = b.y; b.carrier = tg; tg.carrying = true;
+          const tg = sc.target; tg.x = b.x; tg.y = b.y; b.carrier = tg; tg.carrying = true; W.sfx('catch');
           if (S.trick === 't_hook') { // turn and pitch it
             tg.plan = { pts: [{ x: tg.x + 18, y: tg.y + (tg.y > MID ? 10 : -10) }], i: 0 }; sc.lateralAt = t + 0.35; sc.endAt = t + 4;
           } else {
@@ -462,7 +463,7 @@
       if (sc.trick) trickRun(W, sc, dt);
       if (sc.handed && c.plan && !c.down) {
         const fin = c.follow(dt, 1);
-        if (fin && !(sc.exchangeAt && !sc.exchanged)) { c.down = true; sc.endAt = sc.endAt || t + (S.fumble ? 1.2 : 0.7);
+        if (fin && !(sc.exchangeAt && !sc.exchanged)) { c.down = true; if (!S.td && !S.oob) W.sfx(S.yards <= -2 || S.fumble ? 'bighit' : 'hit'); sc.endAt = sc.endAt || t + (S.fumble ? 1.2 : 0.7);
           if (S.fumble) { b.loose = true; b.carrier = null; b.x = c.x + 8; b.y = c.y + 6; sc.recoverAt = t + 0.45; W.pops.push({ t, text: 'FUMBLE!', bad: true }); }
           else if (S.td) W.pops.push({ t, text: tdText(), good: true });
           else if (S.twoPt) W.pops.push({ t, text: 'NO GOOD', bad: true });
@@ -478,7 +479,7 @@
     if (S.kind === 'spike' && t >= sc.spikeAt && !sc.spiked) { sc.spiked = true; b.carrier = null; b.loose = true; b.x = q.x + 6; b.y = q.y + 8; sc.endAt = t + 0.6; W.pops.push({ t, text: 'SPIKE · CLOCK STOPPED', good: true }); }
     if (S.kind === 'kneel' && t >= sc.kneelAt && !sc.knelt) { sc.knelt = true; q.down = true; sc.endAt = t + 0.6; }
     if (S.kind === 'fg' && t >= sc.kickAt && !sc.kicked) {
-      sc.kicked = true; b.carrier = null;
+      sc.kicked = true; b.carrier = null; W.sfx('kick');
       const to = S.made ? { x: 1190, y: MID + rnd(-40, 40) } : { x: 1190, y: MID + (Math.random() < 0.5 ? -1 : 1) * rnd(110, 150) };
       b.flying = { from: { x: los - 70, y: MID }, to, t0: t, dur: clamp((1190 - los) / 600 + 0.6, 1.0, 2.2), h: 90 };
     }
@@ -486,7 +487,7 @@
     for (const a of W.recs) {
       if (isRun && a === sc.carrier) continue;
       if (a === b.carrier && a.plan && a.carrying) {
-        if (!a.down) { if (a.follow(dt, 1)) { a.down = true; if (S.td) W.pops.push({ t, text: tdText(), good: true }); else if (S.twoPt) W.pops.push({ t, text: 'NO GOOD', bad: true }); else if (S.oob) W.pops.push({ t, text: 'OUT OF BOUNDS', good: false }); else if (S.first) W.pops.push({ t, text: 'FIRST DOWN', good: true }); if (sc.tackler && !S.td && !S.oob) { sc.tackler.down = true; } } }
+        if (!a.down) { if (a.follow(dt, 1)) { a.down = true; if (!S.td && !S.oob) W.sfx('hit'); if (S.td) W.pops.push({ t, text: tdText(), good: true }); else if (S.twoPt) W.pops.push({ t, text: 'NO GOOD', bad: true }); else if (S.oob) W.pops.push({ t, text: 'OUT OF BOUNDS', good: false }); else if (S.first) W.pops.push({ t, text: 'FIRST DOWN', good: true }); if (sc.tackler && !S.td && !S.oob) { sc.tackler.down = true; } } }
         else a.stop(dt);
         continue;
       }
@@ -579,7 +580,7 @@
       const svg = box.querySelector('svg');
       const old = svg.querySelector('#formation'); if (old) old.remove();
       const oldBall = svg.querySelector('#ball'); if (oldBall) oldBall.remove();
-      const W = makeWorld(spec);
+      const W = makeWorld(spec); W.live = true;
       const sc = script(W);
       W.ball.carrier = 'snapTo' in W ? W.snapTo : W.qb;
       mount(svg, W); draw(W);
@@ -599,8 +600,8 @@
         draw(W);
         if (W.flagEl && (sc.flagged || (sc.endAt && W.t >= sc.endAt - 0.6))) { W.flagEl.setAttribute('opacity', '1'); if (!sc.liveFlagPop && spec.flag && !spec.flag.pre) { sc.liveFlagPop = true; W.pops.push({ t: W.t, text: 'FLAG', flag: true, sub: spec.flag.kind.toUpperCase() + ' · ' + (spec.flag.onDefense ? 'DEFENSE' : 'OFFENSE') }); sc.endAt = W.t + 1.6; } }
         if (spec.clock && spec.clock.el && sc.endAt) { const s = clamp((W.t - sc.snapAt) / Math.max(0.1, sc.endAt - sc.snapAt), 0, 1); const T = Math.round(spec.clock.from + (spec.clock.to - spec.clock.from) * s); spec.clock.el.textContent = `${Math.floor(T / 60)}:${String(T % 60).padStart(2, '0')}`; }
-        for (const p of W.pops) if (!popped.has(p)) { popped.add(p); popup(box, p); }
-        if (sc.endAt && W.t >= sc.endAt) { end(); return; }
+        for (const p of W.pops) if (!popped.has(p)) { popped.add(p); popup(box, p); if (window.Sound) window.Sound.popup(p.text, spec.sound || {}); }
+        if (sc.endAt && W.t >= sc.endAt) { if (window.Sound && spec.kind !== 'fg') window.Sound.fx('deadball'); end(); return; }
         if (W.t > 9) { end(); return; }
         raf = requestAnimationFrame(frame);
       };

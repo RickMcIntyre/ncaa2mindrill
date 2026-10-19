@@ -889,6 +889,7 @@ function setTab(t) {
   else if (t === 'saban' || t === 'cignetti') { const v = hardView[t] || 'today'; if (v === 'library' && premiumUnlocked()) renderLibrary(t); else if (v === 'survival' && premiumUnlocked()) showSurvival(t); else showDaily(t); }
   else if (t === 'survival') { if (survView === 'library') showPractice(); else showSurvival('free'); }
   else showCoaches();
+  if (window.Sound && !(G && G.st && !G.done && /game/.test(app.firstElementChild?.className || ''))) Sound.ambience(0);
   window.scrollTo(0, 0);
 }
 
@@ -953,6 +954,7 @@ function renderPlay() {
     <div class="side" id="side"></div>
   </div>`;
   renderSide();
+  if (window.Sound) Sound.ambience(crowdLevel());
   if (G.anim) { const a = G.anim; requestAnimationFrame(() => requestAnimationFrame(() => { const b = $('#ball'); if (b) b.style.transform = `translate(${100 + (100 - a.to) * 10}px, ${a.y}px)`; })); }
   $('#field').querySelectorAll('[data-rec]').forEach(g => g.onclick = () => cycleRoute(g.dataset.rec));
   if (!G.animating && !G.busy && !G.done) app.querySelectorAll('[data-bench]').forEach(b => b.onclick = () => { G.benchKey = b.dataset.bench; G.picking = 'bench'; G.pickerSlot = null; G.aim = null; renderPlay(); });
@@ -975,6 +977,13 @@ function logHTML() {
   return `<details class="log" open><summary>Play-by-play</summary><ol>${items.map(l => `<li><span>${esc(l.sit)}</span> — ${esc(l.text)}</li>`).join('')}</ol></details>`;
 }
 
+// who the stadium is rooting for, and how loud it is: a close game late gets loud
+function soundCtx() { return { home: !!(G && G.sc && G.sc.home), neutral: !!(G && G.sc && G.sc.neutral) }; }
+function crowdLevel() {
+  if (!G || !G.st || G.done) return 0;
+  const late = Math.max(0, Math.min(1, 1 - G.st.T / 240)), close = Math.abs(G.st.s) <= 8 ? 1 : 0.55;
+  return 0.3 + 0.7 * late * close;
+}
 function resultMini() {
   const L = G.last; if (!L) return '';
   const color = L.good ? 'var(--good)' : L.bad ? 'var(--bad)' : 'var(--panel-2)';
@@ -1110,7 +1119,7 @@ function renderSide() {
     h += `</div></div>`;
   }
   side.innerHTML = h;
-  const tb = $('#toBtn'); if (tb) tb.onclick = () => { G.useTO = !G.useTO; renderSide(); };
+  const tb = $('#toBtn'); if (tb) tb.onclick = () => { G.useTO = !G.useTO; if (G.useTO && window.Sound) Sound.play('timeout'); renderSide(); };
   side.querySelectorAll('[data-tempo]').forEach(b => b.onclick = () => { G.tempo = b.dataset.tempo; renderSide(); });
   side.querySelectorAll('[data-pers]').forEach(b => b.onclick = () => { // you sub, they sub: the look is drawn again for the new grouping
     const k = b.dataset.pers; if (k === G.pers || !persAvailable(sc, k)) return;
@@ -1278,10 +1287,12 @@ function runPlay(id, tgt, mods = {}) {
   G.busy = true; G.animating = true; G.st = st; renderPlay(); showFieldOnPhone();
   const box = $('#field');
   spec.clock = { from: st.T, to: n.T, el: $('.bug .clock .t') }; // the game clock ticks while the play runs
-  if (window.Sound) Sound.play(spec.kind === 'flag' ? 'flag' : 'snap');
+  spec.sound = soundCtx();
+  if (window.Sound) { Sound.beginPlay(); if (spec.kind !== 'flag') Sound.play('snap'); }
   const run = spec.kind === 'punt' ? Promise.resolve() : PlayAnim.play(box, spec);
   run.then(() => {
-    if (window.Sound) Sound.play(o.flag ? 'flag' : r.td || (o.fg && o.made) ? 'score' : (o.f & 8) ? 'turnover' : (o.f & 16) || (r.yards <= -2) ? 'thud' : (r.yards >= 15) ? 'crowd' : r.first ? 'first' : (o.fg && !o.made) ? 'thud' : null);
+    // the animation's popups already set off the crowd; this covers a skipped or popup-less play
+    if (window.Sound) Sound.result(o.flag ? 'flag' : r.td ? 'td' : o.fg ? (o.made ? 'good' : 'bad') : (o.f & 8) ? 'turnover' : (o.f & 16) || r.yards <= -2 ? 'bad' : r.yards >= 15 ? 'big' : r.first ? 'first' : r.incomplete ? 'inc' : null, spec.sound);
     G.animating = false; G.busy = false; G.st = n; G.last = newLast;
     if (r.end) { renderPlay(); G.busy = true; setTimeout(() => { G.busy = false; finish(r.end, n); }, 900); }
     else renderPlay();
@@ -1397,9 +1408,10 @@ function runTwoPoint(id, tgt, mods = {}) {
   spec.td = ok; spec.finalYtg = ok ? 0 : clamp(3 - (r.yards || 0), 1, 20); spec.twoPt = true;
   G.busy = true; G.animating = true; G.st = st; renderPlay(); showFieldOnPhone();
   const box = $('#field');
-  if (window.Sound) Sound.play('snap');
+  spec.sound = soundCtx();
+  if (window.Sound) { Sound.beginPlay(); Sound.play('snap'); }
   PlayAnim.play(box, spec).then(() => {
-    if (window.Sound) Sound.play(ok ? 'score' : (o.f & 8) ? 'turnover' : 'thud');
+    if (window.Sound) Sound.result(ok ? 'td' : (o.f & 8) ? 'turnover' : 'bad', spec.sound);
     const n2 = { ...base, os: base.os + (ok ? 2 : 0), s: base.s + (ok ? 2 : 0), snaps: base.snaps + 1 };
     G.twoPt = null; G.animating = false; G.busy = false; G.st = n2; G.last = newLast;
     renderPlay(); G.busy = true;
@@ -1465,6 +1477,7 @@ function conclude(end, n, msg) {
   else { store.practice[G.sc.id] = { wp, coachWp: G.sc.cwp }; }
   saveStore();
   track('drive_done', { mode: G.mode, wp: Math.round(wp * 100), beat_coach: wp >= G.sc.cwp ? 1 : 0 });
+  if (window.Sound) { Sound.play('final', { ...soundCtx(), won: wp >= 0.5 }); Sound.ambience(0.12); }
   renderFinal();
   submitResult();
 }
@@ -1973,7 +1986,7 @@ $('#helpBtn').onclick = () => $('#helpDlg').showModal();
 $('#helpClose').onclick = () => $('#helpDlg').close();
 $('#statsBtn').onclick = showStats;
 const sndBtn = $('#soundBtn');
-if (sndBtn) { const paint = () => { sndBtn.textContent = window.Sound && Sound.on ? '🔊' : '🔇'; sndBtn.setAttribute('aria-pressed', String(!!(window.Sound && Sound.on))); }; paint(); sndBtn.onclick = () => { if (!window.Sound) return; Sound.set(!Sound.on); paint(); if (Sound.on) Sound.play('whistle'); }; }
+if (sndBtn) { const paint = () => { sndBtn.textContent = window.Sound && Sound.on ? '🔊' : '🔇'; sndBtn.setAttribute('aria-pressed', String(!!(window.Sound && Sound.on))); }; paint(); sndBtn.onclick = () => { if (!window.Sound) return; Sound.set(!Sound.on); paint(); if (Sound.on) { Sound.play('toggle'); if (G && !G.done && G.st && /game/.test(app.firstElementChild?.className || '')) Sound.ambience(crowdLevel()); } else Sound.ambience(0); }; }
 $('#statsClose').onclick = () => $('#statsDlg').close();
 
 fetch('data.json').then(r => r.json()).then(d => {
