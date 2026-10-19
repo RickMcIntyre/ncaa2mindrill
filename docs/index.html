@@ -78,8 +78,15 @@ header.top { display: grid; grid-template-columns: 44px 1fr 90px; align-items: c
 .iconbtn:hover { border-color: var(--muted); }
 
 nav.tabs { display: flex; justify-content: center; gap: 6px; padding-block: 12px; }
+nav.tabs button { white-space: nowrap; }
 nav.tabs button { font-family: var(--f-ui); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 14px; padding: 6px 16px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
 nav.tabs button[aria-pressed="true"] { background: var(--chalk); color: var(--night); border-color: var(--chalk); }
+/* on a phone the five tabs scroll sideways inside their row instead of pushing the page wider than the screen */
+@media (max-width: 600px) {
+  nav.tabs { justify-content: flex-start; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; gap: 5px; }
+  nav.tabs::-webkit-scrollbar { display: none; }
+  nav.tabs button { flex: 0 0 auto; font-size: 12.5px; padding: 6px 12px; }
+}
 /* Saban mode: the scoreboard bulbs go crimson */
 :root.saban { --amber: #d9433a; }
 nav.tabs .saban-tab[aria-pressed="true"] { background: var(--amber); color: #fff; border-color: var(--amber); }
@@ -135,7 +142,18 @@ code.code { font-family: ui-monospace, Consolas, monospace; background: var(--pa
 
 /* game layout */
 .game { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 22px; margin-top: 8px; align-items: start; }
-@media (max-width: 860px) { .game { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 860px) {
+  /* phones and narrow tablets: scoreboard, field, then the call sheet; the players and the play-by-play go to the bottom */
+  .game { display: flex; flex-direction: column; gap: 10px; }
+  .game > .main { display: contents; }
+  .game .bug { order: 1; } .game .sit { order: 2; padding-block: 0; } .game .fieldbox { order: 3; }
+  .game .side { order: 4; } .game .lineup { order: 5; margin-top: 4px; } .game .log { order: 6; margin-top: 4px; }
+  /* while picking routes, a run or a trick, the field stays pinned at the top of the screen */
+  .game.picking .fieldbox { position: sticky; top: 0; z-index: 6; box-shadow: 0 0 0 16px var(--night), 0 18px 18px rgba(0, 0, 0, .5); }
+}
+.resmini { display: flex; align-items: center; gap: 8px; font-family: var(--f-ui); font-size: 13px; letter-spacing: .04em; color: var(--muted); min-width: 0; }
+.resmini .yd { font-weight: 800; color: var(--chalk); border-radius: 6px; padding: 2px 8px; flex: 0 0 auto; }
+.resmini .t { text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .fieldbox { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--turf); position: relative; }
 .pop { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(.6); font-family: var(--f-ui); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; font-size: clamp(26px, 6vw, 54px); color: var(--chalk); background: rgba(12, 20, 32, .82); border: 2px solid var(--chalk); border-radius: 10px; padding: 6px 22px; white-space: nowrap; pointer-events: none; animation: popin 1.5s cubic-bezier(.2, .9, .3, 1) forwards; text-shadow: 0 2px 10px rgba(0,0,0,.6); }
 .pop.good { color: #ffd166; border-color: #ffd166; }
@@ -387,7 +405,7 @@ window.ADS = { gtag: '', meta: '1054087884349992', x: '', xEvents: { purchase: '
 <script src="native.js?v=2"></script>
 <script src="sound.js?v=1"></script>
 <script src="anim.js?v=10"></script>
-<script src="app.js?v=31"></script>
+<script src="app.js?v=33"></script>
 
 </body>
 </html>

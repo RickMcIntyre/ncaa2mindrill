@@ -942,8 +942,8 @@ function renderPlay() {
   if (!st.look && !G.done) { st.look = sampleLook(st, G.pers); st.lookSide = rand() < 0.5 ? 'L' : 'R'; } // the defense shows its look once per snap (and again if you sub)
   const sitBits = [`<b>${downText(st)}</b>`, `ball on the ${esc(spot(st.ytg, sc))}`];
   if (st.pending > 0) sitBits.push(`<b style="color:var(--amber)">clock running</b>`); else sitBits.push('clock stopped');
-  app.innerHTML = `<div class="game">
-    <div>
+  app.innerHTML = `<div class="game ${G.picking ? 'picking' : ''}">
+    <div class="main">
       ${bug(st, sc)}
       <div class="sit">${sitBits.join(' · ')}</div>
       <div class="fieldbox" id="field">${fieldSVG(st, sc, G.anim)}</div>
@@ -970,10 +970,23 @@ function renderPlay() {
 }
 
 function logHTML() {
-  if (!G.log.length) return '';
-  return `<details class="log" open><summary>Play-by-play</summary><ol>${G.log.map(l => `<li><span>${esc(l.sit)}</span> — ${esc(l.text)}</li>`).join('')}</ol></details>`;
+  const items = G.animating ? G.log.slice(0, -1) : G.log;   // no spoilers: the newest line waits until the play is over
+  if (!items.length) return '';
+  return `<details class="log" open><summary>Play-by-play</summary><ol>${items.map(l => `<li><span>${esc(l.sit)}</span> — ${esc(l.text)}</li>`).join('')}</ol></details>`;
 }
 
+function resultMini() {
+  const L = G.last; if (!L) return '';
+  const color = L.good ? 'var(--good)' : L.bad ? 'var(--bad)' : 'var(--panel-2)';
+  return `<div class="resmini" aria-label="Last play"><span class="yd" style="background:${color}">${esc(L.badge)}</span><span class="t">${esc(L.title)}</span><span class="g">${L.grade.e}</span></div>`;
+}
+// on a phone the field sits above the call sheet: bring it back into view when a snap starts
+function showFieldOnPhone() {
+  if (!window.matchMedia || !matchMedia('(max-width: 860px)').matches) return;
+  const f = $('#field'); if (!f) return;
+  const r = f.getBoundingClientRect();
+  if (r.top < 0 || r.bottom > innerHeight) window.scrollTo({ top: Math.max(0, scrollY + r.top - 60), behavior: 'smooth' });
+}
 function resultHTML() {
   const L = G.last; if (!L) return '';
   const cls = L.grade.cls;
@@ -997,7 +1010,9 @@ function renderSide() {
   const side = $('#side'), st = G.st, sc = G.sc;
   if (G.done) return;
   if (G.animating) { side.innerHTML = `<div class="snapping"><span class="spin"></span> Snap…</div><div class="note">Tap the field to skip.</div>`; return; }
-  let h = resultHTML();
+  // in a picker the last play shrinks to one line, so the choices start right under the field
+  const gm = document.querySelector('.game'); if (gm) gm.classList.toggle('picking', !!G.picking);
+  let h = G.picking ? resultMini() : resultHTML();
   if (G.picking === 'run') {
     const rs = G.runSide, aim = G.aim;
     const lane = aim ? laneOf(aim) : null;
@@ -1260,7 +1275,7 @@ function runPlay(id, tgt, mods = {}) {
   G.last = null; G.anim = null; G.picking = null; G.pickerSlot = null; G.aim = null;
   // Animate the snap from the pre-snap state, then land the result
   const spec = animSpec(st, id, tgt, mods, o, played, r, n, who);
-  G.busy = true; G.animating = true; G.st = st; renderPlay();
+  G.busy = true; G.animating = true; G.st = st; renderPlay(); showFieldOnPhone();
   const box = $('#field');
   spec.clock = { from: st.T, to: n.T, el: $('.bug .clock .t') }; // the game clock ticks while the play runs
   if (window.Sound) Sound.play(spec.kind === 'flag' ? 'flag' : 'snap');
@@ -1380,7 +1395,7 @@ function runTwoPoint(id, tgt, mods = {}) {
   G.last = null; G.anim = null; G.picking = null; G.pickerSlot = null; G.aim = null;
   const spec = animSpec(st, id, tgt, mods, o, o, r2, { ...n, ytg: ok ? 0 : Math.max(1, 3 - (r.yards || 0)) }, who);
   spec.td = ok; spec.finalYtg = ok ? 0 : clamp(3 - (r.yards || 0), 1, 20); spec.twoPt = true;
-  G.busy = true; G.animating = true; G.st = st; renderPlay();
+  G.busy = true; G.animating = true; G.st = st; renderPlay(); showFieldOnPhone();
   const box = $('#field');
   if (window.Sound) Sound.play('snap');
   PlayAnim.play(box, spec).then(() => {
