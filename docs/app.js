@@ -1579,13 +1579,17 @@ function resemblance() {
 const CALL_WORD = { p_short_side: 'Short pass, sideline', p_short_mid: 'Short pass, middle', p_deep_side: 'Deep pass, sideline', p_deep_mid: 'Deep pass, middle', p_rb: 'Pass to the back', pass: 'Pass', r_in: 'Inside run', r_out: 'Outside run', r_qb: 'QB run', r_sneak: 'QB sneak', run: 'Run', spike: 'Spike', kneel: 'Kneel', fg: 'Field goal', punt: 'Punt', timeout: 'Timeout', penalty: 'Penalty', other: 'Play' };
 // the coach's real call graded by the same board you faced, but on a curve: within 2 points counts as the best call
 function gradeCoachCall(sc, p, to, dto) {
-  const id = p.c === 'pass' ? null : p.c === 'run' ? null : CALLS[p.c] ? p.c : null;
-  if (!id || !CALLS[id] || id === 'timeout' || id === 'penalty' || id === 'other') return null;
+  // a feed that only says "pass" or "run" still gets graded: against the best option of that family (generous, like the curve)
+  const generic = p.c === 'pass' ? 'p_' : p.c === 'run' ? 'r_' : null;
+  const id = generic || ['timeout', 'penalty', 'other'].includes(p.c) || !CALLS[p.c] ? null : p.c;
+  if (!generic && !id) return null;
+  if (p.dist == null || p.y == null) return null;
   const st = { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: p.s, ytg: p.y, down: p.d, dist: p.dist, to, dto, elo: sc.elo, pending: 0, snaps: 0, look: 'base', pers: '11' };
-  if (!available(st, id)) return null;
+  if (id && !available(st, id)) return null;
   let opts; try { opts = scoreOptions(st); } catch { return null; }
   if (!opts.length) return null;
-  const mine = opts.filter(o => o.id === id); const ev = mine.length ? Math.max(...mine.map(o => o.ev)) : null;
+  const mine = opts.filter(o => generic ? o.id.startsWith(generic) : o.id === id);
+  const ev = mine.length ? Math.max(...mine.map(o => o.ev)) : null;
   if (ev == null) return null;
   const gap = opts[0].ev - ev;
   return { gap, e: gap <= 0.02 ? '🟩' : gap <= 0.06 ? '🟨' : '🟥', best: opts[0].label };
@@ -1669,17 +1673,26 @@ function drawShareCard(cv) {
   c.fillText(verdict, 70, 232);
   // the two numbers
   const num = (x, label, v, color) => {
-    c.fillStyle = '#8ea0b8'; c.font = `700 30px ${UI}`; c.fillText(label.toUpperCase(), x, 318);
-    c.fillStyle = color; c.font = `800 150px ${UI}`; c.fillText(pct(v), x, 452);
-    c.fillStyle = '#8ea0b8'; c.font = `600 24px ${UI}`; c.fillText('WIN CHANCE', x, 486);
+    c.fillStyle = '#8ea0b8'; c.font = `700 28px ${UI}`; c.fillText(label.toUpperCase(), x, 282);
+    c.fillStyle = color; c.font = `800 118px ${UI}`; c.fillText(pct(v), x, 390);
+    c.fillStyle = '#8ea0b8'; c.font = `600 22px ${UI}`; c.fillText('WIN CHANCE', x, 418);
   };
+  const last = sc.coach.split(' ').slice(-1)[0];
   num(70, 'Me', d.wp, accent);
-  c.fillStyle = '#44597a'; c.font = `800 60px ${UI}`; c.fillText('VS', W / 2 - 44, 420);
-  num(W / 2 + 70, sc.coach.split(' ').slice(-1)[0], sc.cwp, '#eef2f6');
-  // the grades, one tile per call (tiles, not emoji, so the card renders the same everywhere)
-  const n = Math.max(1, G.grades.length), tileW = Math.min(44, (W - 180) / n - 8), gap = Math.min(10, tileW / 4);
-  let tx = 70;
-  for (const e of G.grades) { c.fillStyle = e === '🟩' ? '#4cc27a' : e === '🟨' ? '#e9b949' : '#e2574c'; c.beginPath(); c.roundRect ? c.roundRect(tx, 514, tileW, tileW, 7) : c.rect(tx, 514, tileW, tileW); c.fill(); tx += tileW + gap; }
+  c.fillStyle = '#44597a'; c.font = `800 54px ${UI}`; c.fillText('VS', W / 2 - 40, 364);
+  num(W / 2 + 70, last, sc.cwp, '#eef2f6');
+  // call by call: my tiles against his real calls, graded by the same model (tiles, not emoji, so the card renders the same everywhere)
+  let theirs = [];
+  try { theirs = coachSnaps(G.sc0 || sc).map(s => s.e).filter(Boolean); } catch { /* no coach grades: his row stays empty */ }
+  const maxN = Math.max(G.grades.length, theirs.length, 1);
+  const tileW = Math.min(32, (W - 340) / maxN - 6), gap = Math.min(8, tileW / 4);
+  [['ME', G.grades], [last.toUpperCase(), theirs]].forEach(([label, arr], ri) => {
+    const y = 448 + ri * (tileW + 16);
+    c.fillStyle = '#8ea0b8'; c.font = `700 24px ${UI}`; c.fillText(label, 70, y + tileW / 2 + 9);
+    let tx = 250;
+    for (const e of arr) { c.fillStyle = e === '🟩' ? '#4cc27a' : e === '🟨' ? '#e9b949' : '#e2574c'; c.beginPath(); c.roundRect ? c.roundRect(tx, y, tileW, tileW, 6) : c.rect(tx, y, tileW, tileW); c.fill(); tx += tileW + gap; }
+    if (!arr.length) { c.fillStyle = '#44597a'; c.font = `600 22px ${UI}`; c.fillText('NO GRADED CALLS', 250, y + tileW / 2 + 9); }
+  });
   if (d.trophy) { // the stamp: rotated, loud, rare
     c.save(); c.translate(W - 240, 120); c.rotate(-0.16);
     c.strokeStyle = d.trophy === 'saban' ? '#d9433a' : '#e0b43a'; c.lineWidth = 6; c.strokeRect(-150, -42, 300, 84);
