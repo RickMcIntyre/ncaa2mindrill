@@ -2,13 +2,13 @@
 
 Inputs live in ../raw (see README). Output: ../site/data.json
 """
-import json, re, math, random
+import json, re, math, os, random
 import numpy as np
 import pandas as pd
 from load import load
 
 RAW = 'C:/Users/pmcin/cfb-2min-drill/raw/'
-OUT = 'C:/Users/pmcin/cfb-2min-drill/docs/data.json'
+OUT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'data.json')).replace(os.sep, '/')  # this checkout's site
 YEARS = (2023, 2024, 2025)
 rng = random.Random(7)
 
@@ -25,6 +25,11 @@ if FEATURE:
     OUT = os.environ.get('FEATURE_OUT') or 'C:/Users/pmcin/cfb-2min-drill/build/featured.json'
     assert not OUT.endswith('docs/data.json'), 'featured mode never writes the live data'
     FEAT = [(int(a), b.strip()) for a, b in (x.split('@') for x in _fl.split(','))]
+# What's already on the site. A drive keeps its id and a game its number once published (finished results are
+# stored by drive id and the daily rotations walk id-sorted pools), so the build reuses them, numbers only what is
+# new after them, and carries the featured drives merge_featured.py appended (and their dates) over unchanged.
+LIVE = json.load(open(OUT, encoding='utf-8')) if not FEATURE and os.path.exists(OUT) else dict(scen=[], games={})
+LIVE_GAME = {tuple(v): int(k) for k, v in LIVE['games'].items()}
 
 p = load(YEARS).sort_values(['game_id', 'game_play_number']).reset_index(drop=True)
 p['text'] = p.play_text.fillna('').astype(str)
@@ -159,14 +164,18 @@ gmeta = p.groupby('game_id').agg(year=('year', 'first'), week=('week', 'first'),
                                   helo=('home_team_pregame_elo', 'first'), aelo=('away_team_pregame_elo', 'first'),
                                   date=('start_date', 'first'))
 game_idx = {}
+next_game = [max(LIVE_GAME.values(), default=-1) + 1]
 
 
 def game_ref(gid):
     if gid not in game_idx:
         g = gmeta.loc[gid]
-        game_idx[gid] = len(game_idx)
-        games[game_idx[gid]] = [int(g.year), int(g.week), 1 if g.st == 'postseason' else 0, int(g.hid), int(g.aid),
-                                1 if g.neutral else 0]
+        row = [int(g.year), int(g.week), 1 if g.st == 'postseason' else 0, int(g.hid), int(g.aid), 1 if g.neutral else 0]
+        i = LIVE_GAME.get(tuple(row))
+        if i is None:
+            i = next_game[0]; next_game[0] += 1
+        game_idx[gid] = i
+        games[i] = row
     return game_idx[gid]
 
 
@@ -648,6 +657,10 @@ for st in [(-7, 110, 75, 1, 10, 2, 3), (-3, 30, 30, 1, 10, 1, 3), (-3, 5, 25, 1,
 first = p[(p.is_passplay | p.is_rushplay | p.is_sack | (p.play_type == 'Penalty')) & ~p.kneel].groupby('id_drive').head(1)
 cand = first[(first.period == 4) & (first.TimeSecsRem <= 150) & (first.TimeSecsRem >= 20) &
              (first.pos_team_score - first.def_pos_team_score).between(-16, 0) & first.yards_to_goal.between(20, 99)]
+# two scores down, a drive that starts with up to 4:00 left is still a two-minute drill (the Cignetti and Saban
+# pools). They come after the 2:30 drives, so those keep their order.
+cand = pd.concat([cand, first[(first.period == 4) & (first.TimeSecsRem > 150) & (first.TimeSecsRem <= 240) &
+                              (first.pos_team_score - first.def_pos_team_score).between(-16, -9) & first.yards_to_goal.between(20, 99)]])
 def possession_over(pt):
     pt = str(pt)
     return ('Interception' in pt or 'Touchdown' in pt or 'Fumble Recovery (Opponent)' in pt or pt.startswith('Punt')
@@ -677,11 +690,45 @@ if FEAT:  # the hand-picked drives start at the snap whose play text shows that 
 
 tout = p[p.play_type == 'Timeout'].copy()
 tout['who'] = tout.text.str.extract(r'^Timeout ([^,]+),')[0]
+# from 2024 the clock stops at 2:00 of each half, and the feeds log that stoppage as a timeout by one of the teams
+p['two_min'] = (p.play_type == 'Timeout') & (p.year >= 2024) & p.text.str.contains('clock 02:00', regex=False)
+tout['two_min'] = p.two_min[tout.index]
 
 
-def timeouts_left(gid, team, upto_play):
+def timeouts_left(gid, team, upto_play, two_min=True):
     g = tout[(tout.game_id == gid) & (tout.period >= 3) & (tout.game_play_number < upto_play)]
+    if not two_min:
+        g = g[~g.two_min]
     return max(0, 3 - int((g.who == team).sum()))
+
+
+KICKOFF = ('Kickoff', 'Kickoff Return (Offense)', 'Kickoff Return Touchdown')
+
+
+def long_drive(r):
+    """A drive that starts with 2:31-4:00 left, followed snap by snap from its first play through the 4th quarter
+    until the other team has the ball or the possession ends. The feeds' drive ids carry on into the other team's
+    ball after some turnovers, and their play numbers repeat across quarters, so neither marks out a long drive
+    reliably. Returns the drive's rows (its timeouts included, the two-minute stoppage not) and the rows after it,
+    or None when the feed's clock runs backwards inside the drive."""
+    g = p[p.game_id == r.game_id].loc[r.Index:]
+    rows = []
+    for w in g[g.period == 4].itertuples():
+        # a kickoff only follows a score (which ends the drive anyway), and the feeds sometimes list it a row early
+        if w.play_type in KICKOFF or w.play_type in ('End Period', 'End of Game', 'End of Half', 'End of Regulation', 'placeholder') or w.two_min:
+            continue
+        if w.play_type != 'Timeout' and w.pos_team != r.pos_team:
+            break
+        rows.append(w.Index)
+        if possession_over(w.play_type):
+            break
+    d = p.loc[rows]
+    if (np.diff(d[d.play_type != 'Timeout'].secs.values) > 0).any():
+        return None
+    end = d[d.play_type != 'Timeout'].secs.min()
+    after = g.loc[rows[-1]:].iloc[1:]
+    after = after[(after.period > 4) | ((after.period == 4) & (after.secs <= end))]
+    return d, after
 
 
 def call_of(r):
@@ -714,19 +761,29 @@ def call_of(r):
 
 
 scen = []
-for r in cand.itertuples(index=False):
+EXT = set()  # the two-score drives from 2:31-4:00 (by position in scen)
+for r in cand.itertuples():
     gid = r.game_id
     off_id = team_name_to_id.get(r.pos_team)
     def_id = team_name_to_id.get(r.def_pos_team)
     if off_id is None or def_id is None or gid not in sched.index:
         continue
-    drive = FEAT_DRIVE[r.id_drive] if FEAT else p[(p.id_drive == r.id_drive)]
+    ext = not FEAT and r.TimeSecsRem > 150
+    if ext:
+        long = long_drive(r)
+        if long is None:
+            continue
+        window, after = long
+        drive = window[window.play_type != 'Timeout']
+    else:
+        drive = FEAT_DRIVE[r.id_drive] if FEAT else p[(p.id_drive == r.id_drive)]
     if drive.kneel.all():
         continue
     # include timeouts / penalties that occur during the drive window
     lo, hi = drive.game_play_number.min(), drive.game_play_number.max()
-    window = p[(p.game_id == gid) & (p.game_play_number >= lo) & (p.game_play_number <= hi + 1) &
-               ~p.play_type.isin(['End Period', 'End of Game', 'End of Half', 'End of Regulation', 'Kickoff', 'placeholder'])]
+    if not ext:
+        window = p[(p.game_id == gid) & (p.game_play_number >= lo) & (p.game_play_number <= hi + 1) &
+                   ~p.play_type.isin(['End Period', 'End of Game', 'End of Half', 'End of Regulation', 'Kickoff', 'placeholder'])]
     real = []
     for w in window.itertuples(index=False):
         if w.game_play_number > hi and w.play_type not in ('Timeout',) and not w.play_type.startswith('Field Goal'):
@@ -751,7 +808,7 @@ for r in cand.itertuples(index=False):
         off=off_id, dfn=def_id, coach=coach_for(year, off_id, gid), dcoach=coach_for(year, def_id, gid),
         os=int(r.pos_team_score), ds=int(r.def_pos_team_score), secs=int(r.secs), ytg=int(r.yards_to_goal),
         down=int(r.down), dist=int(r.distance),
-        to=timeouts_left(gid, r.pos_team, r.game_play_number), dto=timeouts_left(gid, r.def_pos_team, r.game_play_number),
+        to=timeouts_left(gid, r.pos_team, r.game_play_number, not ext), dto=timeouts_left(gid, r.def_pos_team, r.game_play_number, not ext),
         elo=round(float(elo), 1) if not pd.isna(elo) else 0,
         orat=rating(year, off_id), drat=rating(year, def_id), kick=KICK.get((year, off_id), 0.0),
         lineup=lineup(year, off_id, gid), dlineup=defense_lineup(year, def_id),
@@ -759,12 +816,12 @@ for r in cand.itertuples(index=False):
     ))
     # coach's win chance at the end of the real drive (same model the player is scored on)
     elo_v = float(elo) if not pd.isna(elo) else 0.0
-    nxt = p[(p.game_id == gid) & (p.game_play_number > hi)]
+    nxt = after if ext else p[(p.game_id == gid) & (p.game_play_number > hi)]
     nxt = nxt[nxt.down.between(1, 4) & nxt.secs.notna()]
     if len(nxt):
         q = nxt.iloc[0]
-        q_to = timeouts_left(gid, q.pos_team, q.game_play_number)
-        q_dto = timeouts_left(gid, q.def_pos_team, q.game_play_number)
+        q_to = timeouts_left(gid, q.pos_team, q.game_play_number, not ext)
+        q_dto = timeouts_left(gid, q.def_pos_team, q.game_play_number, not ext)
         q_s = int(q.pos_team_score) - int(q.def_pos_team_score)
         if q.pos_team == r.pos_team:
             cwp = wp(q_s, q.secs, q.yards_to_goal, q.down, q.distance, q_to, q_dto, elo_v)
@@ -773,14 +830,18 @@ for r in cand.itertuples(index=False):
     else:
         cwp = 1.0 if off_final > def_final else 0.0 if off_final < def_final else 0.5
     scen[-1]['cwp'] = round(float(cwp), 3)
+    if ext:
+        EXT.add(len(scen) - 1)
     if FEAT:
         # the state the coach's win chance is measured at, so the merge can re-score it with the live model
         scen[-1]['_cwp_state'] = ([q_s, float(q.secs), float(q.yards_to_goal), float(q.down), float(q.distance), q_to, q_dto, elo_v, q.pos_team == r.pos_team]
                                   if len(nxt) else None)
+    if FEAT or ext:
         # the clock printed on the first snap (the pbp clock column lags a play behind on some feeds)
         m_ = re.match(r'\((\d+):(\d+)\)', str(r.text))
         if m_:
             scen[-1]['secs'] = int(m_.group(1)) * 60 + int(m_.group(2))
+    if FEAT:
         # timeouts: a team that calls N more timeouts before regulation ends had at least N when the drive started
         later = tout[(tout.game_id == gid) & (tout.period == 4) & (tout.game_play_number >= r.game_play_number)]
         for key, team in (('to', r.pos_team), ('dto', r.def_pos_team)):
@@ -817,23 +878,40 @@ for (y, tid), name in coach.items():
 # deterministic daily order: seeded shuffle, marquee (higher combined elo) games front-loaded a bit
 # two-score drives (Saban mode) use their own generator and sort after the one-score pool, so the daily order of
 # the one-score drives never shifts when they are added
+# the drives with 2:31-4:00 left draw from it after them and sort after them in turn
 rng2 = random.Random(99)
-for s in scen:
+for i, s in enumerate(scen):
     g = gmeta.loc[s['gid']]
-    if s['os'] - s['ds'] >= -8:
+    if i in EXT:
+        s['_k'] = 20 + rng2.random()
+    elif s['os'] - s['ds'] >= -8:
         s['_k'] = rng.random() - ((g.helo + g.aelo) / 2 - 1500) / 1500.0
     else:
         s['_k'] = 10 + rng2.random()
 scen.sort(key=lambda s: s['_k'])
-for i, s in enumerate(scen):
+# a drive already on the site keeps its id; the featured ones come along as they are; new drives go after all of them
+live_id = {(s['gid'], s['off'], s['secs']): s['id'] for s in LIVE['scen'] if not s.get('feat')}
+by_id = {s['id']: s for s in LIVE['scen'] if s.get('feat')}
+next_id = len(LIVE['scen'])
+for s in scen:
     s.pop('_k')
+    i = live_id.pop((s['gid'], s['off'], s['secs']), None)
+    if i is None:
+        i, next_id = next_id, next_id + 1
     s['id'] = i
+    by_id[i] = s
+assert not live_id and sorted(by_id) == list(range(len(by_id))), f'published drives missing from this build: {sorted(live_id.values())[:20]}'
+print('kept', len(LIVE['scen']), 'published drives, featured', sum(1 for s in LIVE['scen'] if s.get('feat')), '| new', len(by_id) - len(LIVE['scen']))
+scen = [by_id[i] for i in range(len(by_id))]
+games = {**{int(k): v for k, v in LIVE['games'].items()}, **games}
 
 data = dict(
-    built='2026-10-15', years=list(YEARS), launch='2026-10-15',
+    built='2026-10-15', years=sorted(set(YEARS) | {s['year'] for s in scen}), launch='2026-10-15',
     teams=teams, games=games, coaches=coaches, tend=TEND, scen=scen, pools=pools, rates=rates,
     fg=[round(float(w), 5) for w in wfg], wp=dict(cats=CATS, w=[round(float(w), 5) for w in ww]),
 )
+if LIVE.get('featured'):
+    data['featured'] = LIVE['featured']
 with open(OUT, 'w', encoding='utf-8') as f:
     json.dump(data, f, separators=(',', ':'), ensure_ascii=False)
 import os

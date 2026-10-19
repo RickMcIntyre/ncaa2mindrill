@@ -18,6 +18,8 @@ python build.py
 
 ```
 
+The build keeps what is already published: every drive in `docs/data.json` keeps its id and every game its number (finished results are stored by drive id, and the daily rotations walk id-sorted pools), new drives are numbered after the last one, and the featured drives and their dates carry over. If a published drive no longer comes out of the build, it stops instead of renumbering. It writes the `docs/` of the checkout it runs from (a worktree builds its own copy); the inputs are always read from the main checkout's `raw/`.
+
 ### Featured drives from this season
 
 To pin a drive from last weekend to a date without disturbing the rotation, download the current season's files into `raw/` (same names, e.g. `pbp_2026.parquet`, `rost_2026.parquet`, `sched_2026.csv`, `ct_2026.parquet`), then:
@@ -44,7 +46,7 @@ Then open http://localhost:8765/. To deploy, upload the contents of `docs/` (ind
 
 ## How the game works
 
-- **Scenarios**: every FBS-vs-FBS drive that started in Q4 with 2:30 or less, trailing by 1–16 or tied, at least 20 yards from the end zone. The regular daily uses the one-score drives (trailing by 8 or fewer); **Cignetti mode** uses drives two scores down (trailing by 9–11) and **Saban mode** drives two touchdowns down (12–16), each with a minute or more left.
+- **Scenarios**: every FBS-vs-FBS drive that started in Q4 with 2:30 or less, trailing by 1–16 or tied, at least 20 yards from the end zone, plus the two-score drives (trailing by 9–16) that started with 2:31–4:00 left. Those longer drives are followed snap by snap through the 4th quarter (over a long drive the feeds' drive ids run into the other team's ball and their play numbers repeat across quarters), start from the clock printed on the first snap when the feed has one, and leave out the two-minute timeout that the 2024+ feeds log as a team's; one whose clock runs backwards in the feed is dropped. The regular daily uses the one-score drives (trailing by 8 or fewer); **Cignetti mode** uses drives two scores down (trailing by 9–11) and **Saban mode** drives two touchdowns down (12–16), each with a minute or more left.
 - **Outcomes**: each call draws a real 2023–2025 snap from a pool keyed by call type (depth × side for passes, inside/outside for runs), field zone and down. The draw is tilted by both teams' season EPA ratings and the chosen player's season numbers.
 - **Trick plays**: the whole bag is on the board every down (flea flicker, halfback pass, reverse, jet sweep, wildcat, Statue of Liberty, hook and ladder, Philly Special, plus fake field goal in range and fake punt on fourth down). Each rides a base pool (deep pass, short pass, inside or outside run) with its own tilt by defensive look, its own sack/interception/fumble multipliers, and a chance of being blown up in the backfield. They are scored like every other option, so the grade says when a trick was the wrong call. Each has its own choreography in `anim.js`.
 - **Two-point try**: a real snap from the 3, untimed. Every option's conversion chance comes from the goal-line pools, anchored so the board's average equals the measured college two-point rate; the call is animated and graded like any other snap.
