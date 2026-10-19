@@ -12,6 +12,20 @@ OUT = 'C:/Users/pmcin/cfb-2min-drill/docs/data.json'
 YEARS = (2023, 2024, 2025)
 rng = random.Random(7)
 
+# Featured-drive mode: build only hand-picked drives from a newer season, to be appended to data.json by
+# merge_featured.py without disturbing the existing drives, pools or models.
+#   FEATURE="2026:401858488@03:05,401858263@02:37"  (game_id @ the clock printed on the drive's first snap)
+#   FEATURE_OUT=<path>                               (where to write; never the live data.json)
+import os, sys
+FEATURE = os.environ.get('FEATURE')
+FEAT = []
+if FEATURE:
+    _fy, _fl = FEATURE.split(':', 1)
+    YEARS = YEARS + (int(_fy),)
+    OUT = os.environ.get('FEATURE_OUT') or 'C:/Users/pmcin/cfb-2min-drill/build/featured.json'
+    assert not OUT.endswith('docs/data.json'), 'featured mode never writes the live data'
+    FEAT = [(int(a), b.strip()) for a, b in (x.split('@') for x in _fl.split(','))]
+
 p = load(YEARS).sort_values(['game_id', 'game_play_number']).reset_index(drop=True)
 p['text'] = p.play_text.fillna('').astype(str)
 p['play_type'] = p.play_type.fillna('Uncategorized')
@@ -634,6 +648,25 @@ for st in [(-7, 110, 75, 1, 10, 2, 3), (-3, 30, 30, 1, 10, 1, 3), (-3, 5, 25, 1,
 first = p[(p.is_passplay | p.is_rushplay | p.is_sack | (p.play_type == 'Penalty')) & ~p.kneel].groupby('id_drive').head(1)
 cand = first[(first.period == 4) & (first.TimeSecsRem <= 150) & (first.TimeSecsRem >= 20) &
              (first.pos_team_score - first.def_pos_team_score).between(-16, 0) & first.yards_to_goal.between(20, 99)]
+FEAT_DRIVE = {}
+if FEAT:  # the hand-picked drives start at the snap whose play text shows that clock
+    picks = []
+    for gid_, clk in FEAT:
+        hit = p[(p.game_id == gid_) & p.text.str.startswith(f'({clk})') & (p.is_passplay | p.is_rushplay | p.is_sack)]
+        assert len(hit), f'no snap at {clk} in game {gid_}'
+        h0 = hit.iloc[0]
+        # the possession runs from that snap until the other team has the ball (drive ids are unreliable on some
+        # feeds, so follow the offense instead); timeouts in between belong to the drive
+        rest = p[(p.game_id == gid_) & (p.game_play_number >= h0.game_play_number)].sort_values('game_play_number')
+        rows = []
+        for w in rest.itertuples(index=False):
+            if w.play_type == 'Timeout' or w.pos_team == h0.pos_team:
+                rows.append(w.game_play_number)
+                continue
+            break
+        FEAT_DRIVE[h0.id_drive] = p[(p.game_id == gid_) & p.game_play_number.isin(rows) & (p.play_type != 'Timeout')]
+        picks.append(hit.head(1))
+    cand = pd.concat(picks)
 
 tout = p[p.play_type == 'Timeout'].copy()
 tout['who'] = tout.text.str.extract(r'^Timeout ([^,]+),')[0]
@@ -680,7 +713,7 @@ for r in cand.itertuples(index=False):
     def_id = team_name_to_id.get(r.def_pos_team)
     if off_id is None or def_id is None or gid not in sched.index:
         continue
-    drive = p[(p.id_drive == r.id_drive)]
+    drive = FEAT_DRIVE[r.id_drive] if FEAT else p[(p.id_drive == r.id_drive)]
     if drive.kneel.all():
         continue
     # include timeouts / penalties that occur during the drive window
@@ -733,7 +766,25 @@ for r in cand.itertuples(index=False):
     else:
         cwp = 1.0 if off_final > def_final else 0.0 if off_final < def_final else 0.5
     scen[-1]['cwp'] = round(float(cwp), 3)
+    if FEAT:
+        # the state the coach's win chance is measured at, so the merge can re-score it with the live model
+        scen[-1]['_cwp_state'] = ([q_s, float(q.secs), float(q.yards_to_goal), float(q.down), float(q.distance), q_to, q_dto, elo_v, q.pos_team == r.pos_team]
+                                  if len(nxt) else None)
+        # the clock printed on the first snap (the pbp clock column lags a play behind on some feeds)
+        m_ = re.match(r'\((\d+):(\d+)\)', str(r.text))
+        if m_:
+            scen[-1]['secs'] = int(m_.group(1)) * 60 + int(m_.group(2))
+        # timeouts: a team that calls N more timeouts before regulation ends had at least N when the drive started
+        later = tout[(tout.game_id == gid) & (tout.period == 4) & (tout.game_play_number >= r.game_play_number)]
+        for key, team in (('to', r.pos_team), ('dto', r.def_pos_team)):
+            scen[-1][key] = min(3, max(scen[-1][key], int((later.who == team).sum())))
 print('scenarios', len(scen))
+if FEAT:
+    keep_games = {s['g'] for s in scen}
+    json.dump(dict(scen=scen, games={k: v for k, v in games.items() if k in keep_games}), open(OUT, 'w', encoding='utf-8'),
+              separators=(',', ':'), ensure_ascii=False)
+    print('wrote featured', OUT, [(s['gid'], s['coach'], s['os'], s['ds'], s['secs'], s['ytg'], s['to'], s['dto']) for s in scen])
+    sys.exit(0)
 
 # coach tendencies (2023-25 combined): pass rate overall, on early downs, on passing downs, when trailing, explosive-pass rate
 tend = {}

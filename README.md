@@ -18,6 +18,18 @@ python build.py
 
 ```
 
+### Featured drives from this season
+
+To pin a drive from last weekend to a date without disturbing the rotation, download the current season's files into `raw/` (same names, e.g. `pbp_2026.parquet`, `rost_2026.parquet`, `sched_2026.csv`, `ct_2026.parquet`), then:
+
+```bash
+cd build
+FEATURE="2026:401858488@03:05" python build.py           # game_id @ the clock on the drive's first snap
+python merge_featured.py featured.json 401858488=2026-10-19
+```
+
+The build writes only those drives (to `build/featured.json`, never the live data). The merge appends them to `docs/data.json` with new ids, re-scores the coach's win chance with the live model, flags them `feat` so they stay out of the daily, Cignetti and Saban rotations, and pins them by local date in `featured`. The intro shows "From Saturday" for a week. Re-running the merge for the same game replaces that drive in place.
+
 Inputs come from SportsDataverse GitHub releases (`cfbfastR_cfb_pbp`, `espn_cfb_coach_tendencies`, `espn_cfb_game_rosters`, `espn_cfb_schedules`, `espn_cfb_teams`). To add a season, download its files into `raw/` with the same names and add the year to `YEARS` in `build.py`.
 
 ## Run locally

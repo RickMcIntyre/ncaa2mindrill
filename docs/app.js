@@ -521,7 +521,20 @@ function toast(msg) { const t = document.createElement('div'); t.className = 'to
 const LAUNCH = Date.UTC(2026, 9, 15);
 function todayIndex() { const now = new Date(); const d = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()); return Math.floor((d - LAUNCH) / 864e5); }
 const pick = (list, i) => list[((i % list.length) + list.length) % list.length];
-function dailyScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.free, i) }; }
+// the local calendar date, the same day todayIndex counts
+function localDay() { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`; }
+function dailyScenario() {
+  const i = todayIndex(), pinned = D.featured && D.featured[localDay()];
+  return { no: i + 1, sc: pinned != null && D.scen[pinned] ? D.scen[pinned] : pick(D.free, i) };
+}
+// "From Saturday": a hand-picked drive from the last week reads as news, not history
+function freshLine(sc) {
+  if (!sc.feat || !sc.date) return '';
+  const days = Math.round((Date.parse(localDay()) - Date.parse(sc.date)) / 864e5);
+  if (days < 0 || days > 9) return '';
+  const wd = new Date(sc.date + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'long', timeZone: 'UTC' });
+  return days <= 1 ? 'From yesterday' : days <= 6 ? `From ${wd}` : `From last ${wd}`;
+}
 // Saban mode: the drives almost nobody wins. Its daily order is its own, offset so it never shares a game with the regular daily.
 function sabanScenario() { const i = todayIndex(); return { no: i + 1, sc: pick(D.hard, i * 7 + 3) }; }
 const HARD_WP = 0.10, CIG_WP = 0.25;
@@ -902,8 +915,9 @@ function showIntro(sc, mode, no) {
     : mode === 'survival'
     ? `Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}, calling it for <b>${esc(off.school)}</b> against ${esc(sc.coach === sc.dcoach ? 'them' : sc.dcoach)}.<br><b>Win to stay alive. Lose and the run is over. Tied at the end: overtime.</b>`
     : `Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}. You're calling it for <b>${esc(off.school)}</b>.<br>Can you do better than <b>${esc(sc.coach)}</b> did?`;
+  const fresh = freshLine(sc);
   app.innerHTML = `<section class="intro">
-    <div class="eyebrow">${eyebrow} · ${esc(gl.when)}</div>
+    <div class="eyebrow">${eyebrow} · ${fresh ? `<b style="color:var(--amber)">${esc(fresh)}</b> · ` : ''}${esc(gl.when)}</div>
     <div class="eyebrow" style="color:var(--chalk)">${esc(gl.title)}</div>
     <h2 class="headline">${headline(sc)}<small>${clock(sc.secs)} left in the game</small></h2>
     ${bug({ ...st, os: sc.os, ds: sc.ds, T: sc.secs, to: sc.to, dto: sc.dto }, sc)}
@@ -1953,11 +1967,13 @@ fetch('data.json').then(r => r.json()).then(d => {
   for (const s of D.scen) s.kick = clamp(s.kick || 0, -0.12, 0.12);
   for (const k of ['pen_pre', 'pen_pass', 'pen_run']) if (D.pools[k]) for (const row of D.pools[k]) if (row[1] === 'Missing') row[1] = 'Penalty';
   for (const s of D.scen) s.wp0 = wpModel(s.os - s.ds, s.secs, s.ytg, s.down, s.dist, s.to, s.dto, s.elo);
-  D.std = D.scen.filter(s => s.os - s.ds >= -8);           // every one-score drive, in its fixed order
+  // hand-picked drives from the current season (s.feat) are pinned to dates in D.featured and kept out of the
+  // rotations, so adding one never shifts what any other day plays
+  D.std = D.scen.filter(s => !s.feat && s.os - s.ds >= -8);           // every one-score drive, in its fixed order
   // the free daily: one score down, 30-75% to win at the start. Winnable with a good drive, lost with a bad one.
   D.free = D.std.filter(s => s.wp0 >= 0.30 && s.wp0 <= 0.75 && !isHopeless(s));
-  D.hard = D.scen.filter(isHard).sort((a, b) => a.id - b.id);
-  D.cig = D.scen.filter(isCig).sort((a, b) => a.id - b.id);
+  D.hard = D.scen.filter(s => !s.feat && isHard(s)).sort((a, b) => a.id - b.id);
+  D.cig = D.scen.filter(s => !s.feat && isCig(s)).sort((a, b) => a.id - b.id);
   if (window.Native && window.Native.init) window.Native.init().then(() => { if (isHardMode(tab)) setTab(tab); }).catch(() => {});
   let seen = false; try { seen = localStorage.getItem('cfb2md:seen') === '1'; localStorage.setItem('cfb2md:seen', '1'); } catch { seen = true; }
   beacon('/hit', { token: playerToken(), src: firstSource() });
