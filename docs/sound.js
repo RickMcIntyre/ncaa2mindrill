@@ -117,8 +117,8 @@
   function renderBuf(name, secs, plan) {
     const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     if (!OC) return Promise.resolve();
-    const off = new OC(2, Math.ceil(A.c.sampleRate * secs), A.c.sampleRate);
-    plan(off, secs);
+    let off;
+    try { off = new OC(2, Math.ceil(A.c.sampleRate * secs), A.c.sampleRate); plan(off, secs); } catch { return Promise.resolve(); }
     return off.startRendering().then(buf => {
       let peak = 0;                                   // normalize, so mixing is by gain alone
       for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > peak) peak = v; } }
@@ -128,6 +128,7 @@
   }
   function renderCrowd() {
     if (!A || A.rendering) return; A.rendering = true;
+    try {
     renderBuf('murmur', 8, off => {                   // 150 people talking: short quiet syllable runs, loopable
       for (let v = 0; v < 150; v++) {
         const f0 = rf(), pan = Math.random() * 1.6 - 0.8; let t = Math.random() * 7.2;
@@ -149,6 +150,7 @@
       for (let v = 0; v < 150; v++) fan(off, Math.pow(Math.random(), 1.4) * 0.4, rf(), 0.55 + Math.random() * 0.7, [330, 780], [430, 980], [0.92, 1.12, 1.0], 0.6 + Math.random() * 0.4, Math.random() * 1.8 - 0.9);
     }))
     .then(() => { if (A.bed && A.bed.kind === 'noise') ambience(lastLevel); });   // swap the jet for people mid-game
+    } catch { /* no offline renders here: the noise fallbacks carry the crowd */ }
   }
   function playBuf(buf, t0, { gain = 0.2, pan = 0, rate = 1, attack = 0.08, dur, release = 0.5 } = {}) {
     const total = Math.min(dur || buf.duration / rate, buf.duration / rate);
@@ -351,8 +353,13 @@
     get _graph() { return A; },          // for tests: the master bus
     set(v) {
       on = !!v; try { localStorage.setItem(KEY, on ? '1' : '0'); } catch { /* ignore */ }
-      if (on) { if (graph()) A.master.gain.setTargetAtTime(0.9, T(), 0.05); }
-      else if (A) { A.master.gain.setTargetAtTime(0, T(), 0.05); }
+      try {
+        if (on) { if (graph()) A.master.gain.setTargetAtTime(0.9, T(), 0.05); }
+        else if (A) {
+          A.master.gain.setTargetAtTime(0, T(), 0.03);
+          setTimeout(() => { if (!on && A) A.c.suspend().catch(() => {}); }, 150);   // after the fade, stop the engine outright
+        }
+      } catch { /* audio unavailable: the flag still flipped */ }
     },
     beginPlay() { reacted = false; },
     play: safe((name, ctx = {}) => {
@@ -363,7 +370,7 @@
         case 'deadball': whistle(t + 0.05, 0.32, 0.045, 0.55); break;
         case 'timeout': whistle(t, 0.5, 0.06); setTimeout(() => on && A && ambience(0.3), 600); break;
         case 'final': horn(t); if (ctx.won) { crowd(true, 1, ctx, t + 0.3); charge(t + 0.8, 0.07); } else crowd(false, 0.8, ctx, t + 0.3); break;
-        case 'toggle': whistle(t, 0.3, 0.05); cheer(0.25, t + 0.2); break;
+        case 'toggle': whistle(t, 0.4, 0.09); cheer(0.3, t + 0.25); break;
         default: react(name, ctx);
       }
     }),
