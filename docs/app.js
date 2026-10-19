@@ -154,7 +154,8 @@ const persOf = p => PERSONNEL[p] || PERSONNEL['11'];
 // does the roster have the bodies for this grouping?
 function persAvailable(sc, p) { const g = persOf(p), L = sc.lineup.rec; const n = pos => L.filter(r => r.pos === pos).length; return n('WR') >= g.wr && n('TE') >= g.te && n('RB') >= g.rb; }
 function routeOk(st, key) { const r = ROUTES[key]; if (!r.id) return false; return r.id === 'p_deep_side' ? st.ytg > 20 : r.id === 'p_deep_mid' ? st.ytg > 25 : true; }
-function blockers() { return Object.values(G.routes).filter(k => k === 'block').length; }
+// extra blockers: only players on the field for this personnel grouping count (the off-field slots keep a default route)
+function blockers() { return receivers(G.sc).filter(r => routeFor(r) === 'block').length; }
 // a pass by any name: the pass concepts, the Hail Mary, and the trick plays that end in a throw
 const isPassId = id => id.startsWith('p_') || id === 'hail' || !!(CALLS[id] && CALLS[id].trick && CALLS[id].base.startsWith('p_'));
 function available(st, id) {
