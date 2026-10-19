@@ -348,6 +348,7 @@ dialog ol { padding-left: 20px; display: grid; gap: 8px; }
 .stats span { font-size: 12px; color: var(--muted); }
 .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--chalk); color: var(--night); padding: 8px 16px; border-radius: 8px; font-weight: 600; }
 footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: center; display: grid; gap: 4px; }
+footer a { color: inherit; text-underline-offset: 2px; }
 .ball { transition: transform .9s cubic-bezier(.3,.7,.3,1); }
 @media (prefers-reduced-motion: reduce) { .ball { transition: none; } }
 </style>
@@ -375,6 +376,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: c
   <footer>
     <div>Every snap is drawn from a real 2023–2025 FBS play. Head coaches as of the game played.</div>
     <div>Fan-made. Not affiliated with or endorsed by the NCAA, its conferences or its schools. Data: cfbfastR / SportsDataverse.</div>
+    <div><a href="/privacy.html">Privacy</a></div>
   </footer>
 </div>
 
