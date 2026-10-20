@@ -32,6 +32,7 @@ VARIANTS = {
     'c': ('HE HAS A STAFF. YOU HAVE A BROWSER.', 'Call a real late-game drive, snap by snap, and see who did it better.'),
 }
 SIZES = {'feed-1200x628': (1200, 628), 'square-1080x1080': (1080, 1080), 'story-1080x1920': (1080, 1920)}
+PRICE_LINE = 'Free. Tournament + hard modes $2.99 once.'  # must match the site's unlock price
 
 
 def wrap(draw, text, f, width):
@@ -82,7 +83,7 @@ def make(size_name, wh, variant, head, sub):
         d.rounded_rectangle([pad, sy, pad + sw, sy + sh], radius=24, outline=LINE, width=3)
         cy = sy + sh + int(W * 0.07)
         d.text((pad, cy), 'ncaa2mindrill.com', font=cf, fill=AMBER)
-        d.text((pad, cy + int(cf.size * 1.2)), 'Free. Hard modes $0.99 once.', font=font(int(W * 0.034), bold=False), fill=MUTED)
+        d.text((pad, cy + int(cf.size * 1.2)), PRICE_LINE, font=font(int(W * 0.034), bold=False), fill=MUTED)
     else:
         colw = int(W * 0.5)
         hf, sf, cf = font(int(W * 0.056)), font(int(W * 0.024), bold=False), font(int(W * 0.03))
@@ -96,7 +97,7 @@ def make(size_name, wh, variant, head, sub):
             d.text((pad, y), ln, font=sf, fill=MUTED); y += int(sf.size * 1.4)
         y += int(H * 0.05)
         d.text((pad, y), 'ncaa2mindrill.com', font=cf, fill=AMBER)
-        d.text((pad, y + int(cf.size * 1.25)), 'Free. Hard modes $0.99 once.', font=font(int(W * 0.02), bold=False), fill=MUTED)
+        d.text((pad, y + int(cf.size * 1.25)), PRICE_LINE, font=font(int(W * 0.02), bold=False), fill=MUTED)
         sw = W - colw - pad; sh = int(shot.height * sw / shot.width)
         if sh > H - band - 2 * pad:
             sh = H - band - 2 * pad; sw = int(shot.width * sh / shot.height)

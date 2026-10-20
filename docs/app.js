@@ -581,7 +581,7 @@ const WEB_UNLOCKED = false;
 const STRIPE_LINK = 'https://buy.stripe.com/4gMcN47ic63E3UZ9dedAk00';   // Stripe → Payment Links → the $0.99 "Hard modes" link
 // What the link charges. Change it with the link, and the price in index.html's help and privacy.html. The app shows
 // the store's own price string instead.
-const PRICE = 0.99;
+const PRICE = 2.99;
 const priceLabel = () => (window.Native && window.Native.isNative && window.Native.price) || `$${PRICE.toFixed(2)}`;
 const UNLOCK_API = 'https://ncaa2mindrill-unlock.unlock-worker.workers.dev'; // the Cloudflare Worker in unlock-worker/
 const UNLOCK_KEY = 'cfb2md:unlock';

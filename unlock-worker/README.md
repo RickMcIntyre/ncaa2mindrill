@@ -6,10 +6,10 @@ Twenty minutes, all in your own accounts. Nothing here stores customer data; Str
 
 ## 1. Stripe (dashboard.stripe.com)
 
-1. **Product**: Products → Add product → name "NCAA Two-Minute Drill: Hard modes", one-time price **$0.99**.
+1. **Product**: Products → Add product → name "NCAA Two-Minute Drill: Cignetti, Saban and the Tournament", one-time price **$2.99**. (Until Oct 2026 it was a $0.99 "Hard modes" link; those buyers keep everything, and `PRICE_MIN` stays 99 so their codes and email restores still check out.)
 2. **Payment Link**: Payment Links → New → pick that price. In the link's settings:
    - After payment: **Don't show confirmation page, redirect customers to your website**, URL
-     `https://ncaa2mindrill.com/?unlock={CHECKOUT_SESSION_ID}#saban`
+     `https://ncaa2mindrill.com/?unlock={CHECKOUT_SESSION_ID}` (the site sends the buyer back to the tab the checkout started from)
    - Collect customer email: on (it is by default; it's what "I already paid" uses).
 3. Copy the link (looks like `https://buy.stripe.com/abc123…`).
 4. **Restricted key**: Developers → API keys → Create restricted key → name "ncaa2mindrill unlock", permissions: **Checkout Sessions: Read** (nothing else). Copy it once; it's shown once.
@@ -36,7 +36,7 @@ The final screen can show "you beat 73% of today's 1,204 players" from real resu
 
 ## How it works
 
-- "Unlock both · $0.99" opens the Payment Link. After paying, Stripe sends the player back with the session id; the site asks the Worker to confirm it with Stripe and gets a signed **unlock code**, which it keeps in the browser.
+- "Unlock all three · $2.99" opens the Payment Link. After paying, Stripe sends the player back with the session id; the site asks the Worker to confirm it with Stripe and gets a signed **unlock code**, which it keeps in the browser.
 - The code is shown on the Saban/Cignetti intro screens with a Copy button, so it works on another device via "I already paid".
 - "I already paid" also accepts the receipt email: the Worker looks up paid sessions for that email.
 - Test mode: use Stripe's test Payment Link + a test restricted key first, pay with card `4242 4242 4242 4242`, then swap to live.
