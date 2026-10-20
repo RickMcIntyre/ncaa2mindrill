@@ -664,7 +664,7 @@ function ladderHTML(here) {
   return `<div class="ladder" aria-label="Difficulty">${rungs.map(([k, name, lvl, price, desc]) =>
     `<div class="rung ${k}${k === here ? ' here' : ''}"><div class="nm">${name}<i>${lvl}</i></div><div class="px">${k === here ? 'You picked' : price}</div><div class="ds">${desc}</div></div>`).join('')}</div>`;
 }
-function renderPaywall(mode) {
+function renderPaywall(mode, back = mode) { // back: the tab to land on once unlocked
   const m = HARD_MODES[mode], native = window.Native && window.Native.isNative;
   const configured = !STRIPE_LINK.includes('REPLACE_ME');
   app.innerHTML = `<section class="intro paywall">
@@ -678,22 +678,22 @@ function renderPaywall(mode) {
          <div class="fine">Card payments by Stripe. One payment unlocks Cignetti mode and Saban mode, forever. It's also in the <a href="https://ncaa2mindrill.com/app">app</a>.</div>`}
   </section>`;
   const sb = $('#stripeBtn'); if (sb) sb.addEventListener('click', () => track('begin_checkout', { value: 0.99, currency: 'USD' }));
-  const b = $('#buyBtn'); if (b) b.onclick = async () => { track('begin_checkout', { value: 0.99, currency: 'USD' }); b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { toast('Unlocked. Go win.'); setTab(mode); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
-  const r = $('#restoreBtn'); if (r) r.onclick = async () => { $('#buyNote').textContent = 'Checking…'; try { const ok = await window.Native.restore(); $('#buyNote').textContent = ok ? 'Restored.' : 'No previous purchase found for this account.'; if (ok) setTab(mode); } catch (e) { $('#buyNote').textContent = 'Restore failed: ' + (e && e.message || e); } };
+  const b = $('#buyBtn'); if (b) b.onclick = async () => { track('begin_checkout', { value: 0.99, currency: 'USD' }); b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { toast('Unlocked. Go win.'); setTab(back); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
+  const r = $('#restoreBtn'); if (r) r.onclick = async () => { $('#buyNote').textContent = 'Checking…'; try { const ok = await window.Native.restore(); $('#buyNote').textContent = ok ? 'Restored.' : 'No previous purchase found for this account.'; if (ok) setTab(back); } catch (e) { $('#buyNote').textContent = 'Restore failed: ' + (e && e.message || e); } };
   const cb = $('#codeBtn'); if (cb) cb.onclick = async () => {
     const v = ($('#codeIn').value || '').trim(); if (!v) return;
     $('#buyNote').textContent = 'Checking…';
     if (/^GIFT-/i.test(v)) { // a friend's gift code
-      try { const r = await unlockApi('/gift/redeem', { code: v.toUpperCase(), token: playerToken() }); if (r && r.ok && r.code) { storeUnlock(r.code); toast('Unlocked. Thank your friend.'); setTab(mode); } else $('#buyNote').textContent = r && r.reason === 'redeemed' ? 'That gift code was already used.' : 'That gift code didn\'t check out.'; } catch (e) { $('#buyNote').textContent = 'Could not reach the unlock service. Try again in a minute.'; }
+      try { const r = await unlockApi('/gift/redeem', { code: v.toUpperCase(), token: playerToken() }); if (r && r.ok && r.code) { storeUnlock(r.code); toast('Unlocked. Thank your friend.'); setTab(back); } else $('#buyNote').textContent = r && r.reason === 'redeemed' ? 'That gift code was already used.' : 'That gift code didn\'t check out.'; } catch (e) { $('#buyNote').textContent = 'Could not reach the unlock service. Try again in a minute.'; }
       return;
     }
     if (UNLOCK_API.includes('REPLACE_ME')) { // no verification service yet: a session id from the receipt URL works
-      if (/^cs_(live|test)_[A-Za-z0-9]+$/.test(v)) { storeUnlock(v); toast('Unlocked.'); setTab(mode); } else $('#buyNote').textContent = 'Paste the code from the device you paid on (it starts with cs_). Email lookup is coming.';
+      if (/^cs_(live|test)_[A-Za-z0-9]+$/.test(v)) { storeUnlock(v); toast('Unlocked.'); setTab(back); } else $('#buyNote').textContent = 'Paste the code from the device you paid on (it starts with cs_). Email lookup is coming.';
       return;
     }
     try {
       const res = v.includes('@') ? await unlockApi('/restore', { email: v }) : await unlockApi('/verify', { code: v });
-      if (res && res.ok && res.code) { storeUnlock(res.code); toast('Unlocked.'); setTab(mode); }
+      if (res && res.ok && res.code) { storeUnlock(res.code); toast('Unlocked.'); setTab(back); }
       else $('#buyNote').textContent = res && res.reason === 'not_found' ? 'No payment found for that. Check the email on your Stripe receipt.' : 'That code didn\'t check out.';
     } catch (e) { $('#buyNote').textContent = 'Could not reach the unlock service. Try again in a minute.'; }
   };
@@ -888,7 +888,7 @@ function setTab(t) {
   paintLocks();
   if (t === 'practice') { survView = 'library'; t = 'survival'; } // the drive library lives under Survival
   tab = t;
-  for (const [id, k] of [['tabDaily', 'daily'], ['tabSaban', 'saban'], ['tabCignetti', 'cignetti'], ['tabSurvival', 'survival'], ['tabCoaches', 'coaches']]) $('#' + id).setAttribute('aria-pressed', String(k === t));
+  for (const [id, k] of [['tabDaily', 'daily'], ['tabSaban', 'saban'], ['tabCignetti', 'cignetti'], ['tabSurvival', 'survival'], ['tabTourney', 'tourney'], ['tabCoaches', 'coaches']]) $('#' + id).setAttribute('aria-pressed', String(k === t));
   document.documentElement.classList.toggle('saban', t === 'saban');
   document.documentElement.classList.toggle('cignetti', t === 'cignetti');
   const sn = $('#subnav');
@@ -907,6 +907,7 @@ function setTab(t) {
   if (t === 'daily') showDaily('daily');
   else if (t === 'saban' || t === 'cignetti') { const v = hardView[t] || 'today'; if (v === 'library' && premiumUnlocked()) renderLibrary(t); else if (v === 'survival' && premiumUnlocked()) showSurvival(t); else showDaily(t); }
   else if (t === 'survival') { if (survView === 'library') showPractice(); else showSurvival('free'); }
+  else if (t === 'tourney') showTourney();
   else showCoaches();
   if (window.Sound && !(G && G.st && !G.done && /game/.test(app.firstElementChild?.className || ''))) Sound.ambience(0);
   window.scrollTo(0, 0);
@@ -1492,6 +1493,7 @@ function conclude(end, n, msg) {
     if (won) { cur.streak += 1; S.best = Math.max(S.best || 0, cur.streak); } else { cur.over = true; S.runs = (S.runs || 0) + 1; }
     G.done.surv = { won, round: G.no, streak: cur.streak, best: S.best };
   }
+  if (G.mode === 'tourney') tRecord(n);
   G.done.trophy = judgeTrophy();
   if (G.done.trophy) { (store.trophies ||= { saban: [], cignetti: [] })[G.done.trophy].push({ no: G.no, mode: G.mode, date: new Date().toISOString().slice(0, 10), game: gameLabel(G.sc).title }); }
   if (G.mode === 'daily' || isHardMode(G.mode)) {
@@ -1629,7 +1631,7 @@ function coachSnaps(sc) {
 // Trophies. A Saban is a perfect game: every snap the best call, at least five snaps, and you beat the coach.
 // A Cignetti is every snap green or yellow with at least 60% best calls, and you beat the coach. Rare on purpose.
 function judgeTrophy() {
-  if (!G.done || !G.snaps.length || G.mode === 'practice' || G.mode === 'survival' || G.retry) return null;
+  if (!G.done || !G.snaps.length || G.mode === 'practice' || G.mode === 'survival' || G.mode === 'tourney' || G.retry) return null;
   // judged on the cliff whatever curve the screen used: the exact best call is green, 3 points off is red
   const cliff = DIFF.saban, gapOf = s => s.gap != null ? s.gap : (s.e === '🟩' ? 0 : s.e === '🟨' ? .02 : .05);
   const n = G.snaps.length, greens = G.snaps.filter(s => gapOf(s) <= cliff.green).length, reds = G.snaps.filter(s => gapOf(s) > cliff.yellow).length;
@@ -1667,8 +1669,9 @@ function comparison(sc) {
 function shareText() {
   const sc = G.sc, d = G.done, gl = gameLabel(sc), saban = isHardMode(G.mode);
   const verdict = d.wp - sc.cwp > 0.02 ? `I beat ${sc.coach}` : Math.abs(d.wp - sc.cwp) <= 0.02 ? `Dead even with ${sc.coach}` : `${sc.coach} got me`;
-  const surv = G.mode === 'survival' && d.surv ? `\nSurvival · ${d.surv.won ? `survived round ${d.surv.round}` : `run over after ${d.surv.streak}`}` : '';
-  return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}${d.trophy ? ` · ${TROPHY[d.trophy].stamp}` : ''}${G.retry ? ' (retry)' : ''}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no && G.mode !== 'survival' ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}${surv}\n${G.grades.join('')}\nncaa2mindrill.com`;
+  const surv = G.mode === 'survival' && d.surv ? `\nSurvival · ${d.surv.won ? `survived round ${d.surv.round}` : `run over after ${d.surv.streak}`}`
+    : G.mode === 'tourney' && d.tourney ? `\nTournament · ${TR[d.tourney.rd].name} · ${d.tourney.champ ? 'won the title' : d.tourney.won ? 'advanced' : 'eliminated'}` : '';
+  return `${verdict} ${pct(d.wp)}–${pct(sc.cwp)}${d.trophy ? ` · ${TROPHY[d.trophy].stamp}` : ''}${G.retry ? ' (retry)' : ''}\nNCAA Two-Minute Drill${saban ? ' · ' + HARD_MODES[G.mode].tag : ''}${G.no && G.mode !== 'survival' && G.mode !== 'tourney' ? ' #' + G.no : ''} · ${gl.title} (${sc.year})${saban ? ` · started at ${pct(sc.wp0)}` : ''}${surv}\n${G.grades.join('')}\nncaa2mindrill.com`;
 }
 // 1200-wide share card, in the look people already screenshot from the NFL game: the score, the checkmark grid,
 // the YOU VS COACH box, the real-game footnote - plus who you called it like, which theirs doesn't have.
@@ -1706,6 +1709,7 @@ function drawShareCard(cv) {
   const decided = d.T <= 0 || d.wp >= 0.999 || d.wp <= 0.001;
   let big;
   if (d.surv) big = d.surv.won ? `SURVIVED \u00b7 ROUND ${d.surv.round}` : `RUN OVER \u00b7 ROUND ${d.surv.round}`;
+  else if (d.tourney) big = d.tourney.champ ? 'NATIONAL CHAMPIONS' : `${d.tourney.won ? 'ADVANCED' : 'ELIMINATED'} \u00b7 ${TR[d.tourney.rd].short.toUpperCase()}`;
   else if (decided) big = d.os === d.ds ? `TO OVERTIME ${d.os}\u2013${d.ds}` : (d.os > d.ds || d.wp >= 0.999) ? `YOU WIN ${d.os}\u2013${d.ds}` : `YOU LOSE ${d.os}\u2013${d.ds}`;
   else big = `${pct(d.wp)} TO WIN \u00b7 ${d.os}\u2013${d.ds}`;
   line(big, `800 100px ${UI}`, CHALK, yBig, clear);
@@ -1781,6 +1785,7 @@ function renderFinal() {
     <h2 class="verdict">${esc(verdict)}</h2>
     ${G.retry ? `<div class="eyebrow" style="text-align:center;color:var(--muted)">Retry${G.attempt ? ' · attempt ' + G.attempt : ''} · does not count. Your first attempt stands${G.firstWp != null ? ` at ${pct(G.firstWp)}` : ''}.</div>` : ''}
     ${survivalHTML()}
+    ${tourneyHTML()}
     ${d.trophy ? `<div class="trophy ${d.trophy}"><div class="who">Awarded</div><div class="big">${esc(TROPHY[d.trophy].label)}</div><div class="end">${esc(TROPHY[d.trophy].line)}</div></div>` : ''}
     ${giftHTML()}
     ${sabanLine}
@@ -1857,7 +1862,8 @@ function renderFinal() {
   const goOn = () => { survKind = G.survKind || 'free'; survNext(); };
   const sn = $('#survNext'); if (sn) sn.onclick = goOn;
   const sw = $('#survNew'); if (sw) sw.onclick = goOn;
-  $('#more').onclick = () => { if (G.mode === 'survival') { survHome(G.survKind || 'free'); return; } if (G.mode === 'saban' || isHard(sc)) pf = { q: '', year: '', kind: 'saban' }; else if (G.mode === 'cignetti' || isCig(sc)) pf = { q: '', year: '', kind: 'cignetti' }; setTab('practice'); };
+  const tn = $('#tNext'); if (tn) tn.onclick = () => { tView = 'home'; setTab('tourney'); };
+  $('#more').onclick = () => { if (G.mode === 'tourney') { tView = 'home'; setTab('tourney'); return; } if (G.mode === 'survival') { survHome(G.survKind || 'free'); return; } if (G.mode === 'saban' || isHard(sc)) pf = { q: '', year: '', kind: 'saban' }; else if (G.mode === 'cignetti' || isCig(sc)) pf = { q: '', year: '', kind: 'cignetti' }; setTab('practice'); };
 }
 
 // ---------- survival: win to stay alive ----------
@@ -1927,6 +1933,334 @@ function survivalHTML() {
     ? (d.wp >= 0.999 ? 'Final. You won it on the field.' : `The rest of the game played out and your ${pct(d.wp)} held up.`) + ` ${s.streak} in a row.${s.streak >= 7 ? ' This is the deep end now.' : ''}`
     : (d.wp <= 0.001 ? 'Final. You lost it on the field.' : `The rest of the game played out and your ${pct(d.wp)} did not hold up.`) + ` ${s.streak} drive${s.streak === 1 ? '' : 's'} survived${s.streak > 0 && s.streak >= s.best ? ', which ties or sets your best' : ''}.`;
   return `<div class="trophy surv ${s.won ? 'alive' : 'dead'}"><div class="who">${esc((SURV_KINDS[G.survKind] || SURV_KINDS.free).label)} · round ${s.round}</div><div class="big">${s.won ? 'SURVIVED' : 'RUN OVER'}</div><div class="end">${esc(line)}</div></div>`;
+}
+
+// ---------- tournament: pick a team-season, win a 12-team bracket one clutch drive at a time ----------
+// The field is the player's team plus 11 of the 22 best other programs (each at its best season), drawn per run and
+// seeded by D.ratings (build/add_ratings.py: 0-100, normalized within each season). Each round is one real one-score
+// drive picked to fit: the player's own team-season first, then the same school, then a team rated like it, against a
+// defense rated like the opponent, and tougher every round (less time, worse field position, bigger deficit). Match or
+// beat the real coach's win chance, or score to take the lead, to advance. The other games are simulated from the
+// ratings. One free run a day; the unlock makes runs unlimited and never changes which drives a round can draw.
+const TR = [
+  { key: 'R1', name: 'First Round', short: 'R1', band: [0.40, 0.80], tough: 0.25, bar: [0.10, 0.60], lost: 'lost in the first round' },
+  { key: 'QF', name: 'Quarterfinal', short: 'QF', band: [0.28, 0.58], tough: 0.45, bar: [0.20, 0.80], lost: 'lost in the quarterfinals' },
+  { key: 'SF', name: 'Semifinal', short: 'SF', band: [0.18, 0.45], tough: 0.60, bar: [0.35, 1], lost: 'lost in the semis' },
+  { key: 'F', name: 'Title Game', short: 'Title', band: [0.06, 0.32], tough: 0.75, bar: [0.55, 1], lost: 'lost in the title game' },
+];
+// a game is [round, side, side]; a side is a seed or the winner of an earlier game. Seeds 1-4 have a first-round bye.
+const TB = { g1: [0, 8, 9], g2: [0, 5, 12], g3: [0, 6, 11], g4: [0, 7, 10], q1: [1, 1, 'g1'], q2: [1, 4, 'g2'], q3: [1, 3, 'g3'], q4: [1, 2, 'g4'], s1: [2, 'q1', 'q2'], s2: [2, 'q3', 'q4'], f: [3, 's1', 's2'] };
+const TB_COLS = [['g1', 'g2', 'g3', 'g4'], ['q1', 'q2', 'q3', 'q4'], ['s1', 's2'], ['f']];
+const TSHARE = 'https://ncaa2mindrill.com/?utm_source=share&utm_campaign=tournament#tournament';
+let tView = 'home', tPending = null, tQuery = '', tPoolMemo = null, tTeamsMemo = null;
+function tState() { return store.tourney ||= { day: '', runs: 0, titles: 0, cur: null, hist: [] }; }
+const tRate = (y, tid) => (D.ratings && D.ratings[y] && D.ratings[y][tid]) || null;
+const tLabel = t => `${t.year} ${T_(t.tid).school}`;
+const tR = r => Math.min(99, Math.round(r)); // shown rating: 50 is the season's median FBS team, its best land at 95-99
+const tYears = () => { const y = Object.keys(D.ratings).sort(); return `${y[0]}–${y[y.length - 1]}`; };
+const tCanStart = () => premiumUnlocked() || tState().day !== localDay();
+const confShort = c => ({ 'American Athletic': 'American', 'FBS Independents': 'Independent', 'Mid-American': 'MAC', 'Conference USA': 'C-USA' }[c] || c);
+const ordN = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+function seeded(s) { return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const hashStr = str => { let h = 2166136261; for (const ch of str) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; };
+// how tough a drive is, 0-1: less time, worse field position, bigger deficit
+const tTough = s => clamp((150 - s.secs) / 130, 0, 1) * 0.35 + clamp((s.ytg - 50) / 45, 0, 1) * 0.3 + clamp(deficit(s) / 8, 0, 1) * 0.35;
+// one-score drives only: the two-score shelves stay with the unlock, for free and paid runs alike
+const tPool = () => tPoolMemo ||= D.std.filter(s => !isHopeless(s));
+// every team-season with a drive on file, its rating, and how many of its own drives a round can use
+function tTeams() {
+  if (tTeamsMemo) return tTeamsMemo;
+  const by = {};
+  for (const s of D.scen) { const r = !s.feat && tRate(s.year, s.off); if (r) by[s.year + ':' + s.off] ||= { ...r, tid: s.off, year: s.year, own: 0 }; }
+  for (const s of tPool()) { const t = by[s.year + ':' + s.off]; if (t) t.own++; }
+  return tTeamsMemo = Object.values(by);
+}
+function tField(me, seed) {
+  const best = {};
+  for (const [y, ts] of Object.entries(D.ratings)) for (const [tid, v] of Object.entries(ts)) {
+    if (+tid !== me.tid && !(best[tid] && best[tid].r >= v.r)) best[tid] = { tid: +tid, year: +y, r: v.r };
+  }
+  const top = Object.values(best).sort((a, b) => b.r - a.r).slice(0, 22), rnd = seeded(seed), field = [{ tid: me.tid, year: me.year, r: me.r, me: true }];
+  while (field.length < 12 && top.length) field.push(top.splice(Math.floor(rnd() * top.length), 1)[0]);
+  return field.sort((a, b) => b.r - a.r || (a.me ? -1 : b.me ? 1 : 0)).map((t, i) => ({ ...t, seed: i + 1 }));
+}
+const tSide = (run, x) => typeof x === 'number' ? x : run.win[x] || null;
+const tMe = run => run.field.find(t => t.me);
+function tOpp(run, k) { const me = tMe(run).seed, a = tSide(run, TB[k][1]), b = tSide(run, TB[k][2]); return run.field[(a === me ? b : a) - 1]; }
+// the player's next game: the first undecided one with their seed in it
+function tGame(run) { const me = tMe(run).seed; return Object.keys(TB).find(k => !run.win[k] && (tSide(run, TB[k][1]) === me || tSide(run, TB[k][2]) === me)) || null; }
+// play the other games through a round from the ratings (5 points of rating is a 73% favorite), the same on every reload
+function tSim(run, upto) {
+  const me = tMe(run).seed;
+  for (const [k, [rd, A, B]] of Object.entries(TB)) {
+    const a = tSide(run, A), b = tSide(run, B);
+    if (rd > upto || run.win[k] || !a || !b || a === me || b === me) continue;
+    run.win[k] = seeded(run.seed ^ hashStr(k))() < sig((run.field[a - 1].r - run.field[b - 1].r) / 5) ? a : b;
+  }
+}
+// the round's drive: the best fits for this team, this opponent and this round (its start, its toughness, and how far
+// the real coach got, since that is the bar), with a little variety among the best few
+function tPickDrive(run, k) {
+  const me = tMe(run), opp = tOpp(run, k), R = TR[TB[k][0]], [lo, hi] = R.band;
+  const used = new Set(run.plays.map(p => p.sid)), today = dailyScenario().sc.id;
+  const near = (t, r) => Math.exp(-Math.abs((t ? t.r : 50) - r) / 10);
+  const fit = s => (s.off === me.tid ? (s.year === me.year ? 4 : 1.8) : 0.9 * near(tRate(s.year, s.off), me.r))
+    + (s.dfn === opp.tid ? (s.year === opp.year ? 1.5 : 0.8) : 0.7 * near(tRate(s.year, s.dfn), opp.r))
+    - 15 * (s.wp0 < lo ? lo - s.wp0 : s.wp0 > hi ? s.wp0 - hi : 0) - 2 * Math.abs(tTough(s) - R.tough)
+    - 4 * Math.max(0, R.bar[0] - s.cwp, s.cwp - R.bar[1]); // the coach's finish is the bar: low early, high late (a coach who got nowhere is no bar at all)
+  // never against your own school, and never calling it for the team you're playing
+  const top = tPool().filter(s => !used.has(s.id) && s.id !== today && s.dfn !== me.tid && s.off !== opp.tid).map(s => ({ s, v: fit(s) })).sort((a, b) => b.v - a.v).slice(0, 6);
+  const w = top.map(t => Math.exp((t.v - top[0].v) / 0.25));
+  let u = rand() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < top.length; i++) { u -= w[i]; if (u <= 0) return top[i].s; }
+  return top[0].s;
+}
+// a round is over: advance on a finish at or above the real coach's, or a score that takes the lead
+function tRecord(n) {
+  const T = tState(), run = T.cur;
+  if (!run || run.over || !run.next || run.next.sid !== G.sc.id) return;
+  const k = run.next.g, rd = TB[k][0], me = tMe(run), opp = tOpp(run, k), d = G.done;
+  const lead = n.os > G.sc.os && n.os > n.ds, beat = d.wp >= G.sc.cwp, won = lead || beat, champ = won && k === 'f', how = lead ? 'score' : beat ? 'coach' : '';
+  run.win[k] = won ? me.seed : opp.seed;
+  run.plays.push({ g: k, rd, opp: opp.seed, sid: G.sc.id, wp: d.wp, cwp: G.sc.cwp, won, how });
+  run.next = null;
+  tSim(run, won && !champ ? rd : 3); // the rest of this round; once the run is over, the rest of the bracket
+  d.tourney = { rd, won, champ, how, opp: opp.seed };
+  track('tourney_round', { round: TR[rd].key, won: won ? 1 : 0 });
+  if (won && !champ) return;
+  run.over = true; run.res = champ ? 'champion' : TR[rd].key;
+  T.runs = (T.runs || 0) + 1; if (champ) T.titles = (T.titles || 0) + 1;
+  (T.hist ||= []).unshift({ tid: me.tid, year: me.year, seed: me.seed, res: run.res, day: localDay() }); T.hist.length = Math.min(T.hist.length, 30);
+  track('tourney_end', { result: champ ? 'champion' : 'lost_' + TR[rd].key });
+}
+const tResult = run => `${tLabel(tMe(run))} ${run.res === 'champion' ? 'won the title' : TR.find(R => R.key === run.res).lost}`;
+// the banner on a tournament drive's final screen
+function tourneyHTML() {
+  const t = G.done && G.done.tourney; if (!t) return '';
+  const run = tState().cur, me = tMe(run), opp = run.field[t.opp - 1], R = TR[t.rd], d = G.done, coach = G.sc.coach;
+  const why = t.how === 'score' ? 'You scored to take the lead.' : t.how === 'coach' ? `You finished at ${pct(d.wp)}, ${d.wp > G.sc.cwp ? 'above' : 'level with'} ${coach}'s ${pct(G.sc.cwp)}.` : `You finished at ${pct(d.wp)}. ${coach} got ${pct(G.sc.cwp)}.`;
+  const line = t.champ ? `${why} ${tLabel(me)} won the title.` : t.won ? `${why} On to the ${TR[t.rd + 1].name}.` : `${why} ${tLabel(me)} ${R.lost}.`;
+  return `<div class="trophy surv ${t.won ? 'alive' : 'dead'}"><div class="who">Tournament · ${esc(R.name)} · vs (${opp.seed}) ${esc(tLabel(opp))}</div><div class="big">${t.champ ? 'CHAMPIONS' : t.won ? 'YOU ADVANCE' : 'ELIMINATED'}</div><div class="end">${esc(line)}</div><button class="cta" id="tNext">${t.won && !t.champ ? `Next: the ${esc(TR[t.rd + 1].name)}` : 'See the bracket'}</button></div>`;
+}
+function showTourney() {
+  const cur = tState().cur;
+  $('#subline').textContent = 'Tournament · 12-team bracket';
+  if (!D.ratings) { app.innerHTML = '<p class="note" style="text-align:center;margin:20px auto">The tournament needs team ratings, and this data file has none yet.</p>'; return; }
+  if (tView === 'preview' && tPending) tPreview();
+  else if (cur && !cur.over && tGame(cur)) tBracket();
+  else if (cur && cur.over && tView !== 'pick') tEnd();
+  else tPicker();
+}
+function tPicker() {
+  tView = 'pick';
+  $('#subline').textContent = 'Tournament · 12-team bracket';
+  const all = tTeams(), by = {};
+  for (const t of all) (by[t.tid] ||= []).push(t);
+  const schools = Object.entries(by).map(([tid, ss]) => ({ team: T_(tid), ss: ss.sort((a, b) => a.year - b.year), best: Math.max(...ss.map(s => s.r)) }));
+  app.innerHTML = `<section class="tpick">
+    <div class="intro">
+      <div class="eyebrow">Tournament · 12-team bracket</div>
+      <h2 class="headline" style="font-size:clamp(46px,11vw,84px)">Win it all<small>One clutch drive a round</small></h2>
+      <div class="pitch">Pick a team-season. It is seeded by its rating into a 12-team playoff with the best teams of ${tYears()}. Every round is one real late-game drive: match the real coach's win chance, or score to take the lead, and you advance.</div>
+      ${tCanStart() ? '' : `<div class="fine">Today's free run is played. Look around all you like; a new run takes the unlock.</div>`}
+    </div>
+    <div class="filters"><input id="tq" type="search" placeholder="Search a school" value="${esc(tQuery)}" aria-label="Search a school" autocomplete="off"><button class="cta ghost" id="trnd" style="flex:0 0 auto;width:auto">Random team</button></div>
+    <div id="tlist"></div>
+  </section>`;
+  const draw = () => {
+    const q = tQuery.trim().toLowerCase(), starts = x => x.team.school.toLowerCase().startsWith(q) ? 1 : 0;
+    const list = (q ? schools.filter(x => (x.team.school + ' ' + x.team.mascot + ' ' + x.team.abbr).toLowerCase().includes(q)) : schools).sort((a, b) => (q ? starts(b) - starts(a) : 0) || b.best - a.best);
+    const shown = list.slice(0, q ? 40 : 12);
+    $('#tlist').innerHTML = `<p class="note">${q ? `${list.length} school${list.length === 1 ? '' : 's'}.` : `Top programs first. Search any of the ${schools.length} schools with drives on file (${all.length} team-seasons).`} Rating: 50 is the median FBS team of that season; the best are 95–99.</p>
+      <div class="tschools">${shown.map(x => `<div class="tsch"><div class="nm"><span class="chip" style="background:${x.team.color}"></span>${esc(x.team.school)}</div><div class="tseas">${x.ss.map(s => `<button class="tsea" data-ts="${s.year}:${s.tid}" aria-label="${s.year} ${esc(x.team.school)}: ${s.w}–${s.l}, ${esc(s.conf)}, rating ${tR(s.r)}"><b>${s.year}</b><span>${s.w}–${s.l} · ${esc(confShort(s.conf))}</span><i>${tR(s.r)}</i></button>`).join('')}</div></div>`).join('')}</div>${list.length > shown.length ? `<p class="note">Showing ${shown.length}. Search for the rest.</p>` : ''}`;
+    $('#tlist').querySelectorAll('[data-ts]').forEach(b => b.onclick = () => { const [y, t] = b.dataset.ts.split(':').map(Number); tChoose(all.find(s => s.year === y && s.tid === t)); });
+  };
+  $('#tq').oninput = e => { tQuery = e.target.value; draw(); };
+  $('#trnd').onclick = () => tChoose(all[Math.floor(rand() * all.length)]);
+  draw();
+}
+function tChoose(ts) { tPending = { ts, seed: (Date.now() ^ Math.floor(rand() * 4294967296)) >>> 0 }; tView = 'preview'; tPreview(); window.scrollTo(0, 0); }
+// the seeding: the team's numbers, its seed, its first opponent and the whole bracket before a snap is played
+function tPreview() {
+  const { ts, seed } = tPending, team = T_(ts.tid), field = tField(ts, seed), me = field.find(t => t.me);
+  const run = { seed, field, win: {}, plays: [] };
+  tSim(run, me.seed <= 4 ? 0 : -1);
+  const opp = tOpp(run, tGame(run)), n = Object.keys(D.ratings[ts.year]).length;
+  const sgn = x => (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(1);
+  $('#subline').textContent = 'Tournament · seeding';
+  app.innerHTML = `<section class="intro tprev">
+    <div class="eyebrow">Tournament · your team</div>
+    <h2 class="headline" style="font-size:clamp(40px,10vw,76px)">${ts.year} ${esc(team.school)}<small>${ts.w}–${ts.l} · ${esc(ts.conf)} · rating ${tR(ts.r)}</small></h2>
+    <div class="tfacts"><div><b>${ordN(ts.rk)}</b><span>of ${n} FBS teams in ${ts.year}</span></div><div><b>${sgn(ts.pd)}</b><span>points a game</span></div><div><b>${sgn(ts.sos)}</b><span>strength of schedule</span></div><div><b>${ts.own}</b><span>late one-score drive${ts.own === 1 ? '' : 's'} of its own</span></div></div>
+    <div class="pitch">You're the <b>${me.seed} seed</b>. ${me.seed <= 4 ? `A first-round bye, then the Quarterfinal against (${opp.seed}) ${esc(tLabel(opp))}. Three drives to a title.` : `First Round against (${opp.seed}) ${esc(tLabel(opp))}. Four drives to a title.`}</div>
+    ${tBracketHTML(run)}
+    ${tCanStart() ? '<button class="cta" id="tStart">Start the tournament</button>' : tLockedHTML()}
+    <button class="cta ghost" id="tBack">Pick another team</button>
+    <div class="fine">The field: 11 of the 22 best programs of ${tYears()}, each at its best season, drawn fresh every run and seeded with yours by rating. The rating blends win %, scoring margin and strength of schedule, scaled 0–100 within each season. The other games are simulated from the ratings.${ts.own ? '' : ` ${esc(tLabel(ts))} has no late one-score drive of its own on file, so each round is a real drive from a team rated like it.`}${premiumUnlocked() ? '' : ' One free run a day.'}</div>
+  </section>`;
+  const st = $('#tStart'); if (st) st.onclick = () => tStart(ts, seed, field);
+  const ul = $('#tUnlock'); if (ul) ul.onclick = tPaywall;
+  $('#tBack').onclick = () => { tPending = null; tPicker(); window.scrollTo(0, 0); };
+}
+function tStart(ts, seed, field) {
+  if (!tCanStart()) { tPaywall(); return; }
+  const T = tState(), me = field.find(t => t.me);
+  T.cur = { seed, day: localDay(), field, win: {}, plays: [], next: null, over: false };
+  T.day = localDay();
+  tSim(T.cur, me.seed <= 4 ? 0 : -1);
+  saveStore(); tPending = null; tView = 'home';
+  track('tourney_start', { team: T_(ts.tid).school, season: ts.year });
+  tBracket(); window.scrollTo(0, 0);
+}
+// a run in progress: this round's matchup and drive, then the bracket
+function tBracket() {
+  const run = tState().cur, me = tMe(run), k = tGame(run), R = TR[TB[k][0]], opp = tOpp(run, k), mine = T_(me.tid), oppT = T_(opp.tid);
+  let sc = run.next && run.next.g === k ? D.scen[run.next.sid] : null;
+  if (!sc) { sc = tPickDrive(run, k); run.next = { g: k, sid: sc.id }; saveStore(); } // drawn once, so a reload doesn't reroll it
+  const off = T_(sc.off), def = T_(sc.dfn), gl = gameLabel(sc);
+  const ctx = sc.off === me.tid && sc.year === me.year ? `A real ${tLabel(me)} drive.`
+    : sc.off === me.tid ? `No ${tLabel(me)} drive fits this round, so here is one of ${mine.school}'s own from ${sc.year}.`
+    : `No ${tLabel(me)} drive fits this round, so you take over a real drive from a team rated like yours, ${sc.dfn === opp.tid ? `against ${oppT.school} itself` : `against a defense rated like ${oppT.school}'s`}.`;
+  $('#subline').textContent = `Tournament · ${R.name}`;
+  app.innerHTML = `<section class="intro tround">
+    <div class="eyebrow">Tournament · ${esc(R.name)}</div>
+    <div class="tmatch"><span class="tm me"><span class="chip" style="background:${mine.color}"></span>(${me.seed}) ${esc(tLabel(me))}</span><span class="v">vs</span><span class="tm"><span class="chip" style="background:${oppT.color}"></span>(${opp.seed}) ${esc(tLabel(opp))}</span></div>
+    <div class="eyebrow" style="color:var(--chalk)">${esc(gl.title)} · ${esc(gl.when)}</div>
+    <h2 class="headline">${headline(sc)}<small>${clock(sc.secs)} left in the game</small></h2>
+    ${bug({ s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, to: sc.to, dto: sc.dto }, sc)}
+    <div class="pitch">${esc(ctx)} Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}, calling it for <b>${esc(off.school)}</b>.<br>To advance: match <b>${esc(sc.coach)}'s ${pct(sc.cwp)}</b> win chance, or score to take the lead.</div>
+    <button class="cta" id="tGo">Kick off the ${esc(R.name)}</button>
+    <div class="fine">Real score, clock, ball, timeouts and skill players from that game. ${esc(def.school)} coached by ${esc(sc.dcoach)}.</div>
+  </section>
+  <section class="final tbr"><div class="h">The bracket</div>${tBracketHTML(run)}</section>`;
+  $('#tGo').onclick = () => { track('drive_start', { mode: 'tourney' }); newGame(sc, 'tourney', TB[k][0] + 1); renderPlay(); };
+}
+function tBracketHTML(run) {
+  const me = tMe(run).seed, now = run.over ? null : tGame(run);
+  const side = (k, s) => {
+    if (!s) return '<div class="bt tbd"><i></i><b>TBD</b></div>';
+    const t = run.field[s - 1], tm = T_(t.tid), w = run.win[k];
+    return `<div class="bt${t.me ? ' me' : ''}${w ? (w === s ? ' w' : ' l') : ''}" title="(${s}) ${esc(tLabel(t))} · rating ${tR(t.r)}"><i>${s}</i><span class="c" style="background:${tm.color}"></span><b><span class="fn">${esc(tm.school)}</span><span class="ab">${esc(tm.abbr)}</span></b><em>’${String(t.year).slice(2)}</em></div>`;
+  };
+  const game = k => {
+    const a = tSide(run, TB[k][1]), b = tSide(run, TB[k][2]), p = run.plays.find(x => x.g === k);
+    return `<div class="bg${a === me || b === me ? ' mine' : ''}${k === now ? ' now' : ''}${p ? (p.won ? ' won' : ' lost') : ''}">${side(k, a)}${side(k, b)}</div>`;
+  };
+  const champ = run.win.f ? run.field[run.win.f - 1] : null;
+  return `<div class="bracket">${TB_COLS.map((ks, i) => `<div class="bcol"><div class="bh"><span class="l">${TR[i].name}</span><span class="s">${TR[i].short}</span></div><div class="bgs">${ks.map(game).join('')}</div></div>`).join('')}</div>${champ ? `<div class="bchamp${champ.me ? ' me' : ''}">Champion: (${champ.seed}) ${esc(tLabel(champ))}</div>` : ''}`;
+}
+function tPathHTML(run) {
+  const rows = tMe(run).seed <= 4 ? ['<div class="tpath bye"><b>First Round · bye</b><span>A top-four seed</span></div>'] : [];
+  for (const p of run.plays) {
+    const o = run.field[p.opp - 1], sc = D.scen[p.sid];
+    rows.push(`<div class="tpath ${p.won ? 'w' : 'l'}"><b>${p.won ? '✅' : '❌'} ${esc(TR[p.rd].name)} · ${p.won ? 'beat' : 'lost to'} (${o.seed}) ${esc(tLabel(o))}</b><span>You ${pct(p.wp)} · ${esc(sc.coach)} ${pct(p.cwp)}${p.how === 'score' ? ' · scored to take the lead' : ''} · ${esc(gameLabel(sc).title)}, ${sc.year}</span></div>`);
+  }
+  return rows.join('');
+}
+function tShareText(run) {
+  const me = tMe(run), marks = TR.map((R, i) => { const p = run.plays.find(x => x.rd === i); return i === 0 && me.seed <= 4 ? 'R1 bye' : p ? `${R.short} ${p.won ? '✅' : '❌'}` : null; }).filter(Boolean);
+  return `${tResult(run)}${run.res === 'champion' ? ' 🏆' : ''}\nNCAA Two-Minute Drill · Tournament · ${me.seed} seed\n${marks.join(' · ')}\n${TSHARE}`;
+}
+// the run is over: the verdict, the path, the whole bracket, and a card to share
+function tEnd() {
+  const T = tState(), run = T.cur, me = tMe(run), rt = tRate(me.year, me.tid) || {}, champ = run.win.f ? run.field[run.win.f - 1] : null, txt = tShareText(run);
+  $('#subline').textContent = `Tournament · ${run.res === 'champion' ? 'champions' : 'final'}`;
+  app.innerHTML = `<section class="final tend">
+    <div class="eyebrow" style="text-align:center">Tournament · ${me.seed} seed · ${rt.w}–${rt.l} · ${esc(rt.conf || '')}</div>
+    <h2 class="verdict">${esc(tResult(run))}</h2>
+    <div class="tpaths">${tPathHTML(run)}</div>
+    ${champ && !champ.me ? `<div class="note" style="text-align:center;max-width:none">(${champ.seed}) ${esc(tLabel(champ))} won it all.</div>` : ''}
+    <div class="h">The bracket</div>
+    ${tBracketHTML(run)}
+    <div class="sharebox">
+      <canvas id="tCanvas" width="1200" height="900" aria-label="Share card"></canvas>
+      <div class="row">
+        <button class="cta" id="tShare">Share</button>
+        <button class="cta ghost" id="tX">Post on X</button>
+        <button class="cta ghost" id="tCopy">Copy text</button>
+        <a class="cta ghost" id="tDl" download="ncaa2mindrill-tournament.png" href="#">Save image</a>
+      </div>
+    </div>
+    ${tCanStart() ? '<button class="cta" id="tNew">New tournament</button>' : `${tLockedHTML()}<button class="cta ghost" id="tNew">Look at another team</button>`}
+    <div class="fine" style="text-align:center">Tournament runs: ${T.runs || 0} · Titles: ${T.titles || 0}. Saved in this browser.</div>
+  </section>`;
+  drawTourneyCard($('#tCanvas'), run);
+  $('#tCopy').onclick = () => navigator.clipboard?.writeText(txt).then(() => toast('Copied'), () => toast('Could not copy'));
+  $('#tX').onclick = () => { const u = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(txt); if (window.Native && window.Native.isNative) window.Native.open(u); else window.open(u, '_blank', 'noopener'); };
+  $('#tShare').onclick = async () => {
+    const blob = await new Promise(res => $('#tCanvas').toBlob(res, 'image/png'));
+    const file = blob && new File([blob], 'ncaa2mindrill-tournament.png', { type: 'image/png' });
+    try {
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text: txt }); return; }
+      if (navigator.share) { await navigator.share({ text: txt }); return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    await navigator.clipboard?.writeText(txt).catch(() => {});
+    toast('Text copied. Use Save image for the card.');
+  };
+  const dl = $('#tDl'); dl.onclick = () => { dl.href = $('#tCanvas').toDataURL('image/png'); };
+  const nw = $('#tNew'); if (nw) nw.onclick = () => { tPicker(); window.scrollTo(0, 0); };
+  const ul = $('#tUnlock'); if (ul) ul.onclick = tPaywall;
+}
+// the share card, in the daily card's look: dark, 1200 wide, nothing under 34px so it reads on a phone
+function drawTourneyCard(cv, run) {
+  const me = tMe(run), team = T_(me.tid), rt = tRate(me.year, me.tid) || {}, champ = run.res === 'champion';
+  const UI = '"Saira Condensed", "Arial Narrow", sans-serif', BODY = '"Barlow", "Segoe UI", sans-serif';
+  const CHALK = '#eef2f6', MUTED = '#a7b5c8', AMBER = '#e9b949', GREEN = '#4cc27a', RED = '#ff8d7e', W = 1200;
+  const winner = run.win.f && !champ ? run.field[run.win.f - 1] : null;
+  const yTiles = 296, tile = 128, yLab = yTiles + tile + 50, by = yLab + 38, rh = 56, bh = 84 + run.plays.length * rh;
+  const yWin = by + bh + 58, yFoot = (winner ? yWin : by + bh) + 56, py = yFoot + 34, ph = 64, H = py + ph + 30;
+  cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#0e1118'; c.fillRect(0, 0, W, H);
+  c.fillStyle = team.color; c.fillRect(0, 0, 14, H); c.fillRect(W - 14, 0, 14, H);
+  c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  const fit = (text, font, maxW) => { c.font = font; let fs = +font.match(/(\d+)px/)[1]; while (c.measureText(text).width > maxW && fs > 34) { fs -= 2; c.font = font.replace(/\d+px/, fs + 'px'); } };
+  const line = (text, font, color, y, maxW = W - 160) => { c.fillStyle = color; fit(text, font, maxW); c.fillText(text, W / 2, y); };
+  const box = (x, y, w, h, r) => { c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, r) : c.rect(x, y, w, h); };
+  line(`TOURNAMENT · ${me.seed} SEED · ${rt.w}–${rt.l} ${confShort(rt.conf || '')}`.toUpperCase(), `700 36px ${UI}`, AMBER, 70);
+  line(tLabel(me).toUpperCase(), `800 100px ${UI}`, CHALK, 172);
+  line((champ ? 'won the title' : TR.find(R => R.key === run.res).lost).toUpperCase(), `800 66px ${UI}`, champ ? GREEN : RED, 254);
+  // one tile per round: a check, an X, the bye, or a round never reached
+  const gap = 30, x0 = W / 2 - (TR.length * tile + (TR.length - 1) * gap) / 2;
+  TR.forEach((R, i) => {
+    const p = run.plays.find(q => q.rd === i), bye = i === 0 && me.seed <= 4, x = x0 + i * (tile + gap);
+    if (p || bye) { c.fillStyle = bye ? '#2a3d57' : p.won ? '#3f9b53' : '#c24a3f'; box(x, yTiles, tile, tile, 14); c.fill(); }
+    else { c.strokeStyle = '#2a3d57'; c.lineWidth = 3; box(x, yTiles, tile, tile, 14); c.stroke(); }
+    if (bye) { c.fillStyle = CHALK; c.font = `800 40px ${UI}`; c.fillText('BYE', x + tile / 2, yTiles + tile / 2 + 14); }
+    else if (p) { c.fillStyle = '#0e1118'; c.font = `800 ${Math.round(tile * 0.62)}px ${BODY}`; c.fillText(p.won ? '✓' : '✗', x + tile / 2, yTiles + tile * 0.72); }
+    c.fillStyle = p || bye ? CHALK : MUTED; c.font = `700 36px ${UI}`; c.fillText(R.short.toUpperCase(), x + tile / 2, yLab);
+  });
+  // each round against the real coach
+  const bx = 120, bw = W - 240;
+  c.strokeStyle = champ ? GREEN : '#2a3d57'; c.lineWidth = 3; box(bx, by, bw, bh, 14); c.stroke();
+  line('YOU  VS  THE REAL COACHES', `700 34px ${UI}`, MUTED, by + 48, bw - 60);
+  run.plays.forEach((p, i) => {
+    const o = run.field[p.opp - 1], y = by + 48 + (i + 1) * rh, val = p.how === 'score' ? 'TOOK THE LEAD' : `${pct(p.wp)} vs ${pct(p.cwp)}`;
+    c.font = `700 36px ${UI}`; const vw = c.measureText(val).width;
+    c.textAlign = 'right'; c.fillStyle = p.won ? GREEN : RED; c.fillText(val, bx + bw - 34, y);
+    c.textAlign = 'left'; c.fillStyle = CHALK; let lab = `${TR[p.rd].short.toUpperCase()} · ${p.won ? 'BEAT' : 'LOST TO'} (${o.seed}) ${tLabel(o).toUpperCase()}`;
+    const room = bw - 68 - vw - 30; fit(lab, `700 36px ${UI}`, room);
+    while (c.measureText(lab).width > room && lab.length > 8) lab = lab.slice(0, -2) + '…';
+    c.fillText(lab, bx + 34, y);
+    c.textAlign = 'center';
+  });
+  if (winner) line(`(${winner.seed}) ${tLabel(winner)} won it all`.toUpperCase(), `700 36px ${UI}`, MUTED, yWin);
+  line('One real late-game drive a round. Beat the real coach to advance.', `500 34px ${BODY}`, MUTED, yFoot);
+  c.fillStyle = '#f2f1ec'; box(220, py, W - 440, ph, 14); c.fill();
+  c.fillStyle = '#15171c'; c.font = `800 32px ${UI}`; c.fillText('N C A A 2 M I N D R I L L . C O M', W / 2, py + 43);
+  c.textAlign = 'left';
+}
+function tLockedHTML() {
+  const price = (window.Native && window.Native.isNative && window.Native.price) || '$0.99';
+  return `<div class="tlock"><div class="who">Today's free run is played</div><div class="end">Your next free tournament is tomorrow. Unlimited runs come with the same ${esc(price)} unlock as Cignetti and Saban mode. Paying never makes a drive easier.</div><button class="cta" id="tUnlock">Unlimited runs · ${esc(price)}</button></div>`;
+}
+function tPaywall() {
+  renderPaywall('cignetti', 'tourney');
+  const h = $('.paywall .headline'); if (h) h.innerHTML = 'Tournament<small>Unlimited runs</small>';
+  const e = $('.paywall .eyebrow'); if (e) e.textContent = "Tournament · today's free run is played";
+  const price = (window.Native && window.Native.isNative && window.Native.price) || '$0.99';
+  const p = $('.paywall .pitch'); if (p) p.innerHTML = `Your next free run is tomorrow. One ${esc(price)} unlock gets you <b>unlimited tournament runs</b>, plus Cignetti and Saban mode with a new drive of each every day. It never changes a drive.`;
+  app.querySelectorAll('.ladder .rung.here').forEach(r => { r.classList.remove('here'); const px = r.querySelector('.px'); if (px) px.textContent = 'Unlock'; });
 }
 
 // ---------- hard-mode libraries (replayable; the daily stays under "Today's drive") ----------
@@ -2044,6 +2378,7 @@ function showStats() {
     `<div><b>${(store.trophies && store.trophies.saban || []).length}</b><span>Sabans earned</span></div><div><b>${(store.trophies && store.trophies.cignetti || []).length}</b><span>Cignettis earned</span></div>` +
     `<div><b>${survState('free').best || 0}</b><span>Survival best run</span></div><div><b>${survState('free').runs || 0}</b><span>Survival runs</span></div>` +
     `<div><b>${survState('cignetti').best || 0}</b><span>Cignetti survival best</span></div><div><b>${survState('saban').best || 0}</b><span>Saban survival best</span></div>` +
+    `<div><b>${tState().runs || 0}</b><span>Tournament runs</span></div><div><b>${tState().titles || 0}</b><span>Tournament titles</span></div>` +
     `<div style="grid-column:span 2" class="note">A Saban is a perfect game: every call the best one, and you beat the coach. A Cignetti: no wrong calls, mostly right ones. Both rare on purpose.</div>`;
   $('#statsNote').textContent = days.length ? 'Saved in this browser only.' : 'Finish today\'s drive to start your record. Saved in this browser only.';
   $('#statsDlg').showModal();
@@ -2054,6 +2389,7 @@ $('#tabDaily').onclick = () => setTab('daily');
 $('#tabSaban').onclick = () => setTab('saban');
 $('#tabCignetti').onclick = () => setTab('cignetti');
 $('#tabSurvival').onclick = () => { survView = 'run'; setTab('survival'); };
+$('#tabTourney').onclick = () => { tView = 'home'; setTab('tourney'); };
 $('#tabCoaches').onclick = () => setTab('coaches');
 $('#helpBtn').onclick = () => $('#helpDlg').showModal();
 $('#helpClose').onclick = () => $('#helpDlg').close();
@@ -2080,7 +2416,7 @@ fetch('data.json').then(r => r.json()).then(d => {
   let seen = false; try { seen = localStorage.getItem('cfb2md:seen') === '1'; localStorage.setItem('cfb2md:seen', '1'); } catch { seen = true; }
   beacon('/hit', { token: playerToken(), src: firstSource() });
   const back = location.search.includes('unlock=');
-  const startTab = location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : location.hash === '#survival' ? 'survival' : 'daily';
+  const startTab = location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : location.hash === '#survival' ? 'survival' : location.hash === '#tournament' ? 'tourney' : 'daily';
   if (back) claimFromUrl().then(() => setTab(startTab)); else setTab(startTab);
   if (!seen && !back) $('#helpDlg').showModal();
 }).catch(() => { app.innerHTML = '<p class="note">Could not load the drive data. Reload the page to try again.</p>'; });
