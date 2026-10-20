@@ -573,11 +573,16 @@ function diffFor() {
   if (G.sc && isCig(G.sc)) return DIFF.cignetti;
   return DIFF.free;
 }
-// The hard modes are paid. In the app: one in-app purchase (RevenueCat, see native.js). On the web: a Stripe Payment
-// Link; after paying, Stripe sends the player back here with the Checkout session id, the unlock worker verifies it
-// with Stripe and returns a signed unlock code, which the site keeps (and the player can paste on another device).
+// Cignetti mode, Saban mode and the Tournament are one paid unlock. In the app: one in-app purchase (RevenueCat, see
+// native.js). On the web: a Stripe Payment Link; after paying, Stripe sends the player back here with the Checkout
+// session id, the unlock worker verifies it with Stripe and returns a signed unlock code, which the site keeps (and the
+// player can paste on another device).
 const WEB_UNLOCKED = false;
 const STRIPE_LINK = 'https://buy.stripe.com/4gMcN47ic63E3UZ9dedAk00';   // Stripe → Payment Links → the $0.99 "Hard modes" link
+// What the link charges. Change it with the link, and the price in index.html's help and privacy.html. The app shows
+// the store's own price string instead.
+const PRICE = 0.99;
+const priceLabel = () => (window.Native && window.Native.isNative && window.Native.price) || `$${PRICE.toFixed(2)}`;
 const UNLOCK_API = 'https://ncaa2mindrill-unlock.unlock-worker.workers.dev'; // the Cloudflare Worker in unlock-worker/
 const UNLOCK_KEY = 'cfb2md:unlock';
 function webUnlockCode() { try { return localStorage.getItem(UNLOCK_KEY) || ''; } catch { return ''; } }
@@ -589,7 +594,7 @@ function storeUnlock(code) {
   try { localStorage.setItem(UNLOCK_KEY, code); } catch { /* storage unavailable: unlocked for this visit only */ }
   paintLocks();
   beacon('/unlocked', { code, src: window.Native && window.Native.isNative ? 'app' : 'web', from: firstSource() });
-  track('purchase', { value: 0.99, currency: 'USD', transaction_id: code });
+  track('purchase', { value: PRICE, currency: 'USD', transaction_id: code });
 }
 // Where this browser first came from: utm_source/utm_campaign (or ?s=) on the first visit, kept so an unlock weeks
 // later is still credited to the campaign that brought the player. "direct" when there was nothing on the link.
@@ -640,45 +645,47 @@ async function claimFromUrl() {
   if (!sid) return false;
   history.replaceState(null, '', location.pathname + (location.hash || ''));
   if (UNLOCK_API.includes('REPLACE_ME')) { // no verification service yet: trust Stripe's redirect
-    if (/^cs_(live|test)_[A-Za-z0-9]+$/.test(sid)) { storeUnlock(sid); toast('Unlocked. Both modes are yours.'); return true; }
+    if (/^cs_(live|test)_[A-Za-z0-9]+$/.test(sid)) { storeUnlock(sid); toast('Unlocked. All three are yours.'); return true; }
     return false;
   }
   const looksReal = /^cs_(live|test)_[A-Za-z0-9]+$/.test(sid);
   try {
     const r = await unlockApi('/claim', { session_id: sid });
-    if (r && r.ok && r.code) { storeUnlock(r.code); toast('Unlocked. Both modes are yours.'); return true; }
+    if (r && r.ok && r.code) { storeUnlock(r.code); toast('Unlocked. All three are yours.'); return true; }
     if (r && r.reason === 'unpaid') { toast('Payment not confirmed yet. If you paid, use "I already paid" with your receipt email.'); return false; }
   } catch (e) { /* service down: fall through */ }
   // the service couldn't answer: trust Stripe's redirect rather than strand a paying customer
-  if (looksReal) { storeUnlock(sid); toast('Unlocked. Both modes are yours.'); return true; }
+  if (looksReal) { storeUnlock(sid); toast('Unlocked. All three are yours.'); return true; }
   toast('Could not confirm the payment. Try again in a minute.');
   return false;
 }
-// the difficulty ladder on the locked screen: the free daily, then the two shelves the unlock opens
+// the ladder on the locked screen: the free daily, then everything the unlock opens
 function ladderHTML(here) {
   const rungs = [
     ['daily', 'Daily', 'Normal', 'Free', `Starts 30–75% to win. Graded on the same curve as the real coach.`],
     ['cignetti', 'Cignetti mode', 'Hard', 'Unlock', 'Down 9–11: a touchdown, an onside kick and a field goal. Graded on a steeper curve than the coach got.'],
     ['saban', 'Saban mode', 'Hardest', 'Unlock', 'Down 12–16: two touchdowns and an onside kick. Only the best call grades green. The 28–3 drives.'],
+    ['tourney', 'Tournament', 'Bracket', 'Unlock', 'Pick any team-season from 2023–2025 and win a 12-team playoff, one real clutch drive a round. Unlimited runs.'],
   ];
-  return `<div class="ladder" aria-label="Difficulty">${rungs.map(([k, name, lvl, price, desc]) =>
+  return `<div class="ladder" aria-label="What the unlock opens">${rungs.map(([k, name, lvl, price, desc]) =>
     `<div class="rung ${k}${k === here ? ' here' : ''}"><div class="nm">${name}<i>${lvl}</i></div><div class="px">${k === here ? 'You picked' : price}</div><div class="ds">${desc}</div></div>`).join('')}</div>`;
 }
+const TOURNEY_PAY = { label: 'Tournament', tagline: 'Win it all', eyebrow: 'Tournament · 12-team bracket' };
 function renderPaywall(mode, back = mode) { // back: the tab to land on once unlocked
-  const m = HARD_MODES[mode], native = window.Native && window.Native.isNative;
+  const m = HARD_MODES[mode] || TOURNEY_PAY, native = window.Native && window.Native.isNative;
   const configured = !STRIPE_LINK.includes('REPLACE_ME');
   app.innerHTML = `<section class="intro paywall">
     <div class="eyebrow">${esc(m.eyebrow)} · locked</div>
     <h2 class="headline" style="font-size:clamp(40px,10vw,72px)">${esc(m.label)}<small>${esc(m.tagline)}</small></h2>
     ${ladderHTML(mode)}
-    <div class="pitch">One $0.99 unlock gets you <b>both</b>, with a new drive of each every day.</div>
-    ${native ? `<button class="cta" id="buyBtn">Unlock both modes · ${esc(window.Native.price || '$0.99')}</button><button class="cta ghost" id="restoreBtn">Restore purchase</button><div class="fine" id="buyNote"></div>`
-      : `${configured ? `<a class="cta" id="stripeBtn" href="${esc(STRIPE_LINK)}">Unlock both modes · $0.99</a>` : `<button class="cta" disabled>Unlock both modes · $0.99 · checkout opens soon</button>`}
+    <div class="pitch">One ${esc(priceLabel())} unlock gets you <b>all three</b>: Cignetti mode and Saban mode, with a new drive of each every day, and unlimited Tournament runs.</div>
+    ${native ? `<button class="cta" id="buyBtn">Unlock all three · ${esc(priceLabel())}</button><button class="cta ghost" id="restoreBtn">Restore purchase</button><div class="fine" id="buyNote"></div>`
+      : `${configured ? `<a class="cta" id="stripeBtn" href="${esc(STRIPE_LINK)}">Unlock all three · ${esc(priceLabel())}</a>` : `<button class="cta" disabled>Unlock all three · ${esc(priceLabel())} · checkout opens soon</button>`}
          <details class="restore"><summary>I already paid, or I have a gift code</summary><div class="fine">Paste the unlock code from your first device, the receipt email Stripe sent you, or a friend's GIFT code.</div><div class="row"><input id="codeIn" class="codein" placeholder="Unlock code, receipt email, or GIFT-…" autocomplete="off"><button class="cta ghost" id="codeBtn">Unlock</button></div><div class="fine" id="buyNote"></div></details>
-         <div class="fine">Card payments by Stripe. One payment unlocks Cignetti mode and Saban mode, forever. It's also in the <a href="https://ncaa2mindrill.com/app">app</a>.</div>`}
+         <div class="fine">Card payments by Stripe. One payment unlocks Cignetti mode, Saban mode and the Tournament, forever. Paying never makes a drive easier. It's also in the <a href="https://ncaa2mindrill.com/app">app</a>.</div>`}
   </section>`;
-  const sb = $('#stripeBtn'); if (sb) sb.addEventListener('click', () => track('begin_checkout', { value: 0.99, currency: 'USD' }));
-  const b = $('#buyBtn'); if (b) b.onclick = async () => { track('begin_checkout', { value: 0.99, currency: 'USD' }); b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { toast('Unlocked. Go win.'); setTab(back); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
+  const sb = $('#stripeBtn'); if (sb) sb.addEventListener('click', () => { track('begin_checkout', { value: PRICE, currency: 'USD' }); try { localStorage.setItem('cfb2md:paidFrom', back); } catch { /* lands on the link's own tab */ } });
+  const b = $('#buyBtn'); if (b) b.onclick = async () => { track('begin_checkout', { value: PRICE, currency: 'USD' }); b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { toast('Unlocked. Go win.'); setTab(back); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
   const r = $('#restoreBtn'); if (r) r.onclick = async () => { $('#buyNote').textContent = 'Checking…'; try { const ok = await window.Native.restore(); $('#buyNote').textContent = ok ? 'Restored.' : 'No previous purchase found for this account.'; if (ok) setTab(back); } catch (e) { $('#buyNote').textContent = 'Restore failed: ' + (e && e.message || e); } };
   const cb = $('#codeBtn'); if (cb) cb.onclick = async () => {
     const v = ($('#codeIn').value || '').trim(); if (!v) return;
@@ -1941,7 +1948,8 @@ function survivalHTML() {
 // drive picked to fit: the player's own team-season first, then the same school, then a team rated like it, against a
 // defense rated like the opponent, and tougher every round (less time, worse field position, bigger deficit). Match or
 // beat the real coach's win chance, or score to take the lead, to advance. The other games are simulated from the
-// ratings. One free run a day; the unlock makes runs unlimited and never changes which drives a round can draw.
+// ratings. Playing takes the unlock (the same one as Cignetti and Saban); picking a team and seeing the seeding are
+// free. Paying never changes which drives a round can draw.
 const TR = [
   { key: 'R1', name: 'First Round', short: 'R1', band: [0.40, 0.80], tough: 0.25, bar: [0.10, 0.60], lost: 'lost in the first round' },
   { key: 'QF', name: 'Quarterfinal', short: 'QF', band: [0.28, 0.58], tough: 0.45, bar: [0.20, 0.80], lost: 'lost in the quarterfinals' },
@@ -1953,19 +1961,19 @@ const TB = { g1: [0, 8, 9], g2: [0, 5, 12], g3: [0, 6, 11], g4: [0, 7, 10], q1: 
 const TB_COLS = [['g1', 'g2', 'g3', 'g4'], ['q1', 'q2', 'q3', 'q4'], ['s1', 's2'], ['f']];
 const TSHARE = 'https://ncaa2mindrill.com/?utm_source=share&utm_campaign=tournament#tournament';
 let tView = 'home', tPending = null, tQuery = '', tPoolMemo = null, tTeamsMemo = null;
-function tState() { return store.tourney ||= { day: '', runs: 0, titles: 0, cur: null, hist: [] }; }
+function tState() { return store.tourney ||= { runs: 0, titles: 0, cur: null, hist: [] }; }
 const tRate = (y, tid) => (D.ratings && D.ratings[y] && D.ratings[y][tid]) || null;
 const tLabel = t => `${t.year} ${T_(t.tid).school}`;
 const tR = r => Math.min(99, Math.round(r)); // shown rating: 50 is the season's median FBS team, its best land at 95-99
 const tYears = () => { const y = Object.keys(D.ratings).sort(); return `${y[0]}–${y[y.length - 1]}`; };
-const tCanStart = () => premiumUnlocked() || tState().day !== localDay();
+const tCanStart = () => premiumUnlocked();
 const confShort = c => ({ 'American Athletic': 'American', 'FBS Independents': 'Independent', 'Mid-American': 'MAC', 'Conference USA': 'C-USA' }[c] || c);
 const ordN = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
 function seeded(s) { return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const hashStr = str => { let h = 2166136261; for (const ch of str) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; };
 // how tough a drive is, 0-1: less time, worse field position, bigger deficit
 const tTough = s => clamp((150 - s.secs) / 130, 0, 1) * 0.35 + clamp((s.ytg - 50) / 45, 0, 1) * 0.3 + clamp(deficit(s) / 8, 0, 1) * 0.35;
-// one-score drives only: the two-score shelves stay with the unlock, for free and paid runs alike
+// one-score drives only, so the Tournament never hands out the Cignetti and Saban shelves
 const tPool = () => tPoolMemo ||= D.std.filter(s => !isHopeless(s));
 // every team-season with a drive on file, its rating, and how many of its own drives a round can use
 function tTeams() {
@@ -2062,7 +2070,7 @@ function tPicker() {
       <div class="eyebrow">Tournament · 12-team bracket</div>
       <h2 class="headline" style="font-size:clamp(46px,11vw,84px)">Win it all<small>One clutch drive a round</small></h2>
       <div class="pitch">Pick a team-season. It is seeded by its rating into a 12-team playoff with the best teams of ${tYears()}. Every round is one real late-game drive: match the real coach's win chance, or score to take the lead, and you advance.</div>
-      ${tCanStart() ? '' : `<div class="fine">Today's free run is played. Look around all you like; a new run takes the unlock.</div>`}
+      ${tCanStart() ? '' : `<div class="fine">Picking a team and seeing your seed are free. Playing the bracket comes with the unlock.</div>`}
     </div>
     <div class="filters"><input id="tq" type="search" placeholder="Search a school" value="${esc(tQuery)}" aria-label="Search a school" autocomplete="off"><button class="cta ghost" id="trnd" style="flex:0 0 auto;width:auto">Random team</button></div>
     <div id="tlist"></div>
@@ -2096,7 +2104,7 @@ function tPreview() {
     ${tBracketHTML(run)}
     ${tCanStart() ? '<button class="cta" id="tStart">Start the tournament</button>' : tLockedHTML()}
     <button class="cta ghost" id="tBack">Pick another team</button>
-    <div class="fine">The field: 11 of the 22 best programs of ${tYears()}, each at its best season, drawn fresh every run and seeded with yours by rating. The rating blends win %, scoring margin and strength of schedule, scaled 0–100 within each season. The other games are simulated from the ratings.${ts.own ? '' : ` ${esc(tLabel(ts))} has no late one-score drive of its own on file, so each round is a real drive from a team rated like it.`}${premiumUnlocked() ? '' : ' One free run a day.'}</div>
+    <div class="fine">The field: 11 of the 22 best programs of ${tYears()}, each at its best season, drawn fresh every run and seeded with yours by rating. The rating blends win %, scoring margin and strength of schedule, scaled 0–100 within each season. The other games are simulated from the ratings.${ts.own ? '' : ` ${esc(tLabel(ts))} has no late one-score drive of its own on file, so each round is a real drive from a team rated like it.`}</div>
   </section>`;
   const st = $('#tStart'); if (st) st.onclick = () => tStart(ts, seed, field);
   const ul = $('#tUnlock'); if (ul) ul.onclick = tPaywall;
@@ -2106,7 +2114,6 @@ function tStart(ts, seed, field) {
   if (!tCanStart()) { tPaywall(); return; }
   const T = tState(), me = field.find(t => t.me);
   T.cur = { seed, day: localDay(), field, win: {}, plays: [], next: null, over: false };
-  T.day = localDay();
   tSim(T.cur, me.seed <= 4 ? 0 : -1);
   saveStore(); tPending = null; tView = 'home';
   track('tourney_start', { team: T_(ts.tid).school, season: ts.year });
@@ -2133,7 +2140,7 @@ function tBracket() {
     <div class="fine">Real score, clock, ball, timeouts and skill players from that game. ${esc(def.school)} coached by ${esc(sc.dcoach)}.</div>
   </section>
   <section class="final tbr"><div class="h">The bracket</div>${tBracketHTML(run)}</section>`;
-  $('#tGo').onclick = () => { track('drive_start', { mode: 'tourney' }); newGame(sc, 'tourney', TB[k][0] + 1); renderPlay(); };
+  $('#tGo').onclick = () => { if (!premiumUnlocked()) { tPaywall(); return; } track('drive_start', { mode: 'tourney' }); newGame(sc, 'tourney', TB[k][0] + 1); renderPlay(); };
 }
 function tBracketHTML(run) {
   const me = tMe(run).seed, now = run.over ? null : tGame(run);
@@ -2251,17 +2258,9 @@ function drawTourneyCard(cv, run) {
   c.textAlign = 'left';
 }
 function tLockedHTML() {
-  const price = (window.Native && window.Native.isNative && window.Native.price) || '$0.99';
-  return `<div class="tlock"><div class="who">Today's free run is played</div><div class="end">Your next free tournament is tomorrow. Unlimited runs come with the same ${esc(price)} unlock as Cignetti and Saban mode. Paying never makes a drive easier.</div><button class="cta" id="tUnlock">Unlimited runs · ${esc(price)}</button></div>`;
+  return `<div class="tlock"><div class="who">Part of the unlock</div><div class="end">Playing the Tournament comes with the same ${esc(priceLabel())} unlock as Cignetti and Saban mode: unlimited runs, any team-season. Paying never makes a drive easier.</div><button class="cta" id="tUnlock">Unlock the Tournament · ${esc(priceLabel())}</button></div>`;
 }
-function tPaywall() {
-  renderPaywall('cignetti', 'tourney');
-  const h = $('.paywall .headline'); if (h) h.innerHTML = 'Tournament<small>Unlimited runs</small>';
-  const e = $('.paywall .eyebrow'); if (e) e.textContent = "Tournament · today's free run is played";
-  const price = (window.Native && window.Native.isNative && window.Native.price) || '$0.99';
-  const p = $('.paywall .pitch'); if (p) p.innerHTML = `Your next free run is tomorrow. One ${esc(price)} unlock gets you <b>unlimited tournament runs</b>, plus Cignetti and Saban mode with a new drive of each every day. It never changes a drive.`;
-  app.querySelectorAll('.ladder .rung.here').forEach(r => { r.classList.remove('here'); const px = r.querySelector('.px'); if (px) px.textContent = 'Unlock'; });
-}
+function tPaywall() { renderPaywall('tourney', 'tourney'); }
 
 // ---------- hard-mode libraries (replayable; the daily stays under "Today's drive") ----------
 const hardView = { saban: 'today', cignetti: 'today' }; // 'today' | 'survival' | 'library'
@@ -2290,11 +2289,11 @@ function giftHTML() {
   if (!giftEligible() || (window.Native && window.Native.isNative)) return '';
   const owner = webUnlockCode(); if (!owner) return '';
   const g = store.gift;
-  return `<div class="card gift"><div class="who">You beat a Saban drive</div><div class="end">That's worth a membership for a friend: one gift code, both modes, free.</div>${g ? `<div class="end">Your gift code: <code class="code">${esc(g.code)}</code> <button class="mod" id="copyGift">Copy</button></div><div class="note">They paste it under "I already paid" on ncaa2mindrill.com.</div>` : `<div class="row"><button class="cta" id="giftBtn">Get my gift code</button></div><div class="fine" id="giftNote"></div>`}</div>`;
+  return `<div class="card gift"><div class="who">You beat a Saban drive</div><div class="end">That's worth a membership for a friend: one gift code, all three paid modes, free.</div>${g ? `<div class="end">Your gift code: <code class="code">${esc(g.code)}</code> <button class="mod" id="copyGift">Copy</button></div><div class="note">They paste it under "I already paid" on ncaa2mindrill.com.</div>` : `<div class="row"><button class="cta" id="giftBtn">Get my gift code</button></div><div class="fine" id="giftNote"></div>`}</div>`;
 }
 function wireGift() {
   const b = $('#giftBtn'); if (b) b.onclick = async () => { b.disabled = true; $('#giftNote').textContent = 'Asking the front office…'; try { const r = await unlockApi('/gift/issue', { owner: webUnlockCode() }); if (r && r.ok && r.gift) { store.gift = { code: r.gift, ts: Date.now() }; saveStore(); renderFinal(); } else { $('#giftNote').textContent = r && r.reason === 'bad_owner' ? 'Gift codes come with a paid unlock. Yours could not be confirmed.' : 'No code right now. Try again in a minute.'; b.disabled = false; } } catch (e) { $('#giftNote').textContent = 'Could not reach the service.'; b.disabled = false; } };
-  const c = $('#copyGift'); if (c) c.onclick = () => navigator.clipboard?.writeText(`Free NCAA Two-Minute Drill membership (Saban + Cignetti mode). Paste this under "I already paid" at ncaa2mindrill.com/#saban: ${store.gift.code}`).then(() => toast('Copied with instructions'), () => toast(store.gift.code));
+  const c = $('#copyGift'); if (c) c.onclick = () => navigator.clipboard?.writeText(`Free NCAA Two-Minute Drill membership (Saban mode, Cignetti mode and the Tournament). Paste this under "I already paid" at ncaa2mindrill.com/#saban: ${store.gift.code}`).then(() => toast('Copied with instructions'), () => toast(store.gift.code));
 }
 
 // ---------- practice ----------
@@ -2416,7 +2415,8 @@ fetch('data.json').then(r => r.json()).then(d => {
   let seen = false; try { seen = localStorage.getItem('cfb2md:seen') === '1'; localStorage.setItem('cfb2md:seen', '1'); } catch { seen = true; }
   beacon('/hit', { token: playerToken(), src: firstSource() });
   const back = location.search.includes('unlock=');
-  const startTab = location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : location.hash === '#survival' ? 'survival' : location.hash === '#tournament' ? 'tourney' : 'daily';
+  let paidFrom = null; if (back) { try { paidFrom = localStorage.getItem('cfb2md:paidFrom'); localStorage.removeItem('cfb2md:paidFrom'); } catch { /* use the link's own tab */ } }
+  const startTab = ['saban', 'cignetti', 'tourney'].includes(paidFrom) ? paidFrom : location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : location.hash === '#survival' ? 'survival' : location.hash === '#tournament' ? 'tourney' : 'daily';
   if (back) claimFromUrl().then(() => setTab(startTab)); else setTab(startTab);
   if (!seen && !back) $('#helpDlg').showModal();
 }).catch(() => { app.innerHTML = '<p class="note">Could not load the drive data. Reload the page to try again.</p>'; });

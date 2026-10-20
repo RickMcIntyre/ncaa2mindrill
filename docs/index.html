@@ -418,7 +418,7 @@ footer a { color: inherit; text-underline-offset: 2px; }
     <button id="tabCignetti" aria-pressed="false" class="cig-tab mode-tab" aria-label="Cignetti mode, hard"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Cignetti<span class="lvl">Hard</span></button>
     <button id="tabSaban" aria-pressed="false" class="saban-tab mode-tab" aria-label="Saban mode, hardest"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Saban<span class="lvl">Hardest</span></button>
     <button id="tabSurvival" aria-pressed="false">Survival</button>
-    <button id="tabTourney" aria-pressed="false">Tournament</button>
+    <button id="tabTourney" aria-pressed="false" class="tour-tab mode-tab" aria-label="Tournament"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Tournament</button>
     <button id="tabCoaches" aria-pressed="false">Coaches</button>
   </nav>
   <div id="subnav" class="subnav" hidden></div>
@@ -441,9 +441,9 @@ footer a { color: inherit; text-underline-offset: 2px; }
     <li><b>Pick your personnel.</b> 10, 11, 12, 13, 21 or 22: backs, tight ends, receivers. Heavy groups block and pull the defense in; four wide spreads it out. When you sub, the defense subs too.</li>
     <li><b>Bench anyone.</b> Tap a player chip under the field to swap in a backup at that spot, including the backup quarterback. His season numbers come with him.</li>
     <li><b>Survival.</b> A random drive, then a harder one, then a harder one. Win the game to stay alive; lose once and the run is over. Rounds 7–9 are one-score long shots; 10 and up are Cignetti and Saban drives. Cignetti and Saban mode each have their own Survival run inside their own pool.</li>
-    <li><b>Tournament.</b> Pick a team-season from 2023–2025 and get seeded by its rating into a 12-team playoff. Each round is one real late-game drive, tougher every round: match the real coach's win chance or score to take the lead to advance. One free run a day.</li>
+    <li><b>Tournament.</b> Pick a team-season from 2023–2025 and get seeded by its rating into a 12-team playoff. Each round is one real late-game drive, tougher every round: match the real coach's win chance or score to take the lead to advance. Part of the unlock.</li>
     <li><b>Cignetti mode · hard.</b> A second daily drive, two scores down: 9–11 points, so you need a touchdown, an onside kick and a field goal. Graded on a steeper curve than the real coach. Google yourself afterward.</li>
-    <li><b>Saban mode · hardest.</b> A third daily drive, two touchdowns down: 12–16 points. Only the best call grades green. Nobody is expected to win these. One $0.99 unlock opens both modes.</li>
+    <li><b>Saban mode · hardest.</b> A third daily drive, two touchdowns down: 12–16 points. Only the best call grades green. Nobody is expected to win these. One $0.99 unlock opens Cignetti, Saban and the Tournament.</li>
   </ol>
   <button class="cta" id="helpClose">Let's go</button>
 </dialog>
@@ -479,7 +479,7 @@ window.ADS = { gtag: '', meta: '1054087884349992', x: '', xEvents: { purchase: '
 <script src="native.js?v=2"></script>
 <script src="sound.js?v=6"></script>
 <script src="anim.js?v=11"></script>
-<script src="app.js?v=46"></script>
+<script src="app.js?v=47"></script>
 
 </body>
 </html>
