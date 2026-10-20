@@ -339,6 +339,55 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tbody tr:hover { background: var(--panel); cursor: pointer; }
 .note { color: var(--muted); font-size: 13px; max-width: 70ch; }
 
+/* tournament: team picker, seeding, the bracket */
+.tpick .intro { margin-top: 6px; margin-bottom: 14px; }
+.tschools { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.tsch { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; min-width: 0; }
+.tsch .nm { font-family: var(--f-ui); font-weight: 700; font-size: 19px; display: flex; align-items: center; gap: 8px; }
+.tsch .nm .chip, .tmatch .chip { width: 6px; height: 18px; border-radius: 2px; flex: none; }
+.tseas { display: flex; flex-wrap: wrap; gap: 6px; }
+.tsea { display: inline-flex; align-items: baseline; gap: 8px; background: var(--night); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-family: var(--f-ui); }
+.tsea:hover { border-color: var(--amber); }
+.tsea b { font-size: 16px; } .tsea span { color: var(--muted); font-size: 13.5px; } .tsea i { font-style: normal; font-weight: 800; color: var(--amber); font-size: 16px; }
+.tfacts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.tfacts > div { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 6px; display: grid; gap: 2px; }
+.tfacts b { font-family: var(--f-ui); font-weight: 800; font-size: 24px; color: var(--amber); line-height: 1.1; }
+.tfacts span { font-size: 12px; color: var(--muted); line-height: 1.25; }
+@media (max-width: 480px) { .tfacts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tmatch { display: flex; align-items: center; justify-content: center; gap: 8px 10px; flex-wrap: wrap; font-family: var(--f-ui); font-weight: 700; font-size: 19px; }
+.tmatch .tm { display: inline-flex; align-items: center; gap: 6px; } .tmatch .tm.me { color: var(--amber); }
+.tmatch .v { color: var(--muted); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; }
+.tbr { margin-top: 26px; }
+.tlock { display: grid; gap: 8px; text-align: center; background: var(--panel); border: 1px solid var(--amber); border-radius: 10px; padding: 14px; }
+.tlock .who { font-family: var(--f-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--amber); font-size: 13px; }
+.trophy .cta { margin-top: 6px; }
+.tpaths { display: grid; gap: 6px; }
+.tpath { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 8px; padding: 8px 12px; display: grid; gap: 2px; min-width: 0; }
+.tpath.w { border-left-color: var(--good); } .tpath.l { border-left-color: var(--bad); }
+.tpath b { font-family: var(--f-ui); font-size: 17px; letter-spacing: .03em; } .tpath span { font-size: 13.5px; color: var(--muted); }
+.bracket { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; text-align: left; }
+.bcol { display: grid; grid-template-rows: auto 1fr; gap: 6px; min-width: 0; }
+.bh { font-family: var(--f-ui); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); text-align: center; }
+.bh .s, .bt .ab { display: none; }
+.bgs { display: flex; flex-direction: column; justify-content: space-around; gap: 8px; }
+.bg { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 7px; display: grid; gap: 3px; min-width: 0; }
+.bg.mine { border-color: var(--amber); } .bg.now { box-shadow: 0 0 0 2px var(--amber); }
+.bg.won { border-color: var(--good); } .bg.lost { border-color: var(--bad); }
+.bt { display: flex; align-items: center; gap: 5px; font-family: var(--f-ui); font-size: 15px; line-height: 1.2; min-width: 0; white-space: nowrap; }
+.bt i { font-style: normal; font-size: 11px; color: var(--muted); width: 14px; text-align: right; flex: none; }
+.bt .c { width: 4px; height: 14px; border-radius: 2px; flex: none; }
+.bt b { font-weight: 700; letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.bt em { font-style: normal; color: var(--muted); font-size: 12px; flex: none; }
+.bt.l { opacity: .45; } .bt.l b { text-decoration: line-through; }
+.bt.me b { color: var(--amber); }
+.bt.tbd b { color: var(--muted); font-weight: 600; }
+.bchamp { text-align: center; font-family: var(--f-ui); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; font-size: 16px; margin-top: 10px; color: var(--chalk); }
+.bchamp.me { color: var(--amber); }
+@media (max-width: 600px) {
+  .bracket { gap: 4px; } .bh .l, .bt .fn { display: none; } .bh .s, .bt .ab { display: inline; }
+  .bg { padding: 3px 4px; } .bt { font-size: 13.5px; gap: 3px; } .bt i { width: 12px; font-size: 10px; } .bt em { font-size: 11px; }
+}
+
 dialog { background: var(--panel); color: var(--chalk); border: 1px solid var(--line); border-radius: 12px; max-width: min(520px, calc(100vw - 32px)); padding: 20px; }
 dialog::backdrop { background: rgba(4, 8, 14, .7); }
 dialog h2 { font-family: var(--f-ui); letter-spacing: .08em; text-transform: uppercase; margin: 0 0 10px; }
@@ -369,6 +418,7 @@ footer a { color: inherit; text-underline-offset: 2px; }
     <button id="tabCignetti" aria-pressed="false" class="cig-tab mode-tab" aria-label="Cignetti mode, hard"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Cignetti<span class="lvl">Hard</span></button>
     <button id="tabSaban" aria-pressed="false" class="saban-tab mode-tab" aria-label="Saban mode, hardest"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Saban<span class="lvl">Hardest</span></button>
     <button id="tabSurvival" aria-pressed="false">Survival</button>
+    <button id="tabTourney" aria-pressed="false" class="tour-tab mode-tab" aria-label="Tournament"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Tournament</button>
     <button id="tabCoaches" aria-pressed="false">Coaches</button>
   </nav>
   <div id="subnav" class="subnav" hidden></div>
@@ -391,8 +441,9 @@ footer a { color: inherit; text-underline-offset: 2px; }
     <li><b>Pick your personnel.</b> 10, 11, 12, 13, 21 or 22: backs, tight ends, receivers. Heavy groups block and pull the defense in; four wide spreads it out. When you sub, the defense subs too.</li>
     <li><b>Bench anyone.</b> Tap a player chip under the field to swap in a backup at that spot, including the backup quarterback. His season numbers come with him.</li>
     <li><b>Survival.</b> A random drive, then a harder one, then a harder one. Win the game to stay alive; lose once and the run is over. Rounds 7–9 are one-score long shots; 10 and up are Cignetti and Saban drives. Cignetti and Saban mode each have their own Survival run inside their own pool.</li>
+    <li><b>Tournament.</b> Pick a team-season from 2023–2025 and get seeded by its rating into a 12-team playoff. Each round is one real late-game drive, tougher every round: match the real coach's win chance or score to take the lead to advance. Part of the unlock.</li>
     <li><b>Cignetti mode · hard.</b> A second daily drive, two scores down: 9–11 points, so you need a touchdown, an onside kick and a field goal. Graded on a steeper curve than the real coach. Google yourself afterward.</li>
-    <li><b>Saban mode · hardest.</b> A third daily drive, two touchdowns down: 12–16 points. Only the best call grades green. Nobody is expected to win these. One $0.99 unlock opens both modes.</li>
+    <li><b>Saban mode · hardest.</b> A third daily drive, two touchdowns down: 12–16 points. Only the best call grades green. Nobody is expected to win these. One $0.99 unlock opens Cignetti, Saban and the Tournament.</li>
   </ol>
   <button class="cta" id="helpClose">Let's go</button>
 </dialog>
@@ -428,7 +479,7 @@ window.ADS = { gtag: '', meta: '1054087884349992', x: '', xEvents: { purchase: '
 <script src="native.js?v=2"></script>
 <script src="sound.js?v=6"></script>
 <script src="anim.js?v=11"></script>
-<script src="app.js?v=45"></script>
+<script src="app.js?v=47"></script>
 
 </body>
 </html>

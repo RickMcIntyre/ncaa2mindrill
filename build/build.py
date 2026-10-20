@@ -912,6 +912,8 @@ data = dict(
 )
 if LIVE.get('featured'):
     data['featured'] = LIVE['featured']
+if LIVE.get('ratings'):  # Tournament team-season ratings from add_ratings.py (run it again after adding a season)
+    data['ratings'] = LIVE['ratings']
 with open(OUT, 'w', encoding='utf-8') as f:
     json.dump(data, f, separators=(',', ':'), ensure_ascii=False)
 import os
