@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from load import load
 
-RAW = 'C:/Users/pmcin/cfb-2min-drill/raw/'
+RAW = os.environ.get('CFB_RAW', 'C:/Users/pmcin/cfb-2min-drill/raw/')  # the main checkout's raw/ (the GitHub job sets its own)
 OUT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'data.json')).replace(os.sep, '/')  # this checkout's site
 YEARS = (2023, 2024, 2025)
 rng = random.Random(7)
