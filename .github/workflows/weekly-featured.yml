@@ -148,6 +148,17 @@ jobs:
           python build/check_additions.py "$RUNNER_TEMP/old.json" docs/data.json
           git log -1 --format='%an <%ae>%n%n%B'
 
+      - name: Keep what was built
+        if: always() && steps.run.outputs.code != '' && steps.plan.outputs.mode != 'dry-run'
+        uses: actions/upload-artifact@v7
+        with:
+          name: featured-${{ github.run_id }}
+          path: |
+            build/featured.json
+            ${{ runner.temp }}/run.log
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Push to main
         id: push
         if: steps.run.outputs.code == '0' && steps.plan.outputs.mode == 'run'
