@@ -18,7 +18,7 @@ Seasons are normalized separately, so 2023 and 2025 teams sit on the same scale 
 import json, math, os, sys
 import pandas as pd
 
-RAW = 'C:/Users/pmcin/cfb-2min-drill/raw/'
+RAW = os.environ.get('CFB_RAW', 'C:/Users/pmcin/cfb-2min-drill/raw/')  # the main checkout's raw/ unless CFB_RAW says otherwise
 DATA = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'data.json'))  # this checkout's site
 CAP = 24          # points of margin that count in one game
 W_WIN = 0.45      # composite weight of win %; the rest is SRS

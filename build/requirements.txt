@@ -1,0 +1,4 @@
+# The GitHub job's packages: the versions on the machine that builds data.json locally (Python 3.14), so both build alike.
+numpy==2.5.0rc1
+pandas==3.0.6
+pyarrow==26.0.0
