@@ -3,21 +3,28 @@
     python weekly_featured.py                 # the real run: fetch, rank, build, pin Sun..Sat, commit, push
     python weekly_featured.py --dry-run       # fetch and rank only, print the picks
     python weekly_featured.py --saturday 2026-10-17 --start 2026-10-19 --days 2 --no-push
+    python weekly_featured.py --commit-only   # the GitHub job: commit, then it checks the commit and pushes itself
 
 Exit codes: 0 done, 2 already done for this weekend, 3 the feed doesn't have the whole slate yet (try again later),
-1 anything else. Safe to run several times: once this Sunday is pinned it stops at exit 2.
+4 nothing to pin (no games that Saturday, or no drive qualified), 1 anything else. Safe to run several times: once
+this Sunday is pinned it stops at exit 2. Before committing it checks that docs/data.json only gained drives, games
+and dates (check_additions.py); if anything published changed it puts the file back and stops at exit 1.
+
+Inputs are read from raw/ in the main checkout, or from $CFB_RAW (the GitHub job, .github/workflows/weekly-featured.yml).
+The data and the commit go to the checkout this script is in.
 
 A drive qualifies when the offense starts it in the 4th quarter with 0:20-4:00 left, trailing by 1-16 or tied, at
 least 20 yards from the end zone, with a live chance (5-92% by the feed's win probability). Each game contributes its
 best drive. "Biggest" weighs how much the drive swung the game, how wild the game's fourth quarter was, how big the
 two programs are (pregame Elo), and a bonus for go-ahead scores and true last chances.
 """
-import argparse, datetime as dt, json, math, os, re, subprocess, sys, urllib.request
+import argparse, datetime as dt, json, math, os, re, subprocess, sys, time, urllib.request
 import numpy as np
 import pandas as pd
+import check_additions
 
-ROOT = 'C:/Users/pmcin/cfb-2min-drill'
-RAW = ROOT + '/raw/'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')   # this checkout
+RAW = os.environ.get('CFB_RAW', 'C:/Users/pmcin/cfb-2min-drill/raw/')
 DATA = ROOT + '/docs/data.json'
 REL = 'https://api.github.com/repos/sportsdataverse/sportsdataverse-data/releases/tags/'
 FILES = [('cfbfastR_cfb_pbp', 'play_by_play_{y}.parquet', 'pbp_{y}.parquet'),
@@ -31,11 +38,29 @@ def log(*a):
     print(*a, flush=True)
 
 
+def retry(f, *a, tries=3):
+    for i in range(tries):
+        try:
+            return f(*a)
+        except OSError as e:
+            if i == tries - 1:
+                raise
+            log(f'  {e}, retrying')
+            time.sleep(30 * (i + 1))
+
+
+def release(tag):
+    # on GitHub's runners the shared anonymous API quota runs out, so use the job's token when there is one
+    tok = os.environ.get('GITHUB_TOKEN')
+    req = urllib.request.Request(REL + tag, headers={'Authorization': f'Bearer {tok}'} if tok else {})
+    return json.load(urllib.request.urlopen(req, timeout=60))
+
+
 def fetch(season, after_utc):
     """Download this season's files; return False if the play-by-play wasn't refreshed after `after_utc`."""
     fresh = True
     for tag, name, local in FILES:
-        meta = json.load(urllib.request.urlopen(REL + tag, timeout=60))
+        meta = retry(release, tag)
         asset = next((a for a in meta['assets'] if a['name'] == name.format(y=season)), None)
         if not asset:
             raise SystemExit(f'no {name.format(y=season)} in {tag}')
@@ -44,7 +69,7 @@ def fetch(season, after_utc):
             fresh = False
         dest = RAW + local.format(y=season)
         tmp = dest + '.part'
-        urllib.request.urlretrieve(asset['browser_download_url'], tmp)
+        retry(urllib.request.urlretrieve, asset['browser_download_url'], tmp)
         os.replace(tmp, dest)
         log(f'  {local.format(y=season)}: {os.path.getsize(dest) // 1024} KB, feed updated {asset["updated_at"]}')
     return fresh
@@ -61,12 +86,18 @@ def clock_of(text):
     return (f'{m.group(1)}:{m.group(2)}', int(m.group(1)) * 60 + int(m.group(2))) if m else (None, None)
 
 
-def rank(season, saturday):
+def schedule(season):
     s = pd.read_csv(RAW + f'sched_{season}.csv')
     s['et'] = pd.to_datetime(s.game_date, utc=True).dt.tz_convert(ET).dt.date
+    return s
+
+
+def rank(season, saturday):
+    s = schedule(season)
     week = s[(s.et >= saturday - dt.timedelta(days=2)) & (s.et <= saturday)]          # Thursday through Saturday
     if not len(week):
-        raise SystemExit(3)
+        log('no games Thursday-Saturday: nothing to pin')
+        raise SystemExit(4)
     cols = ['game_id', 'pos_team', 'def_pos_team', 'period', 'down', 'distance', 'yards_to_goal', 'play_type', 'play_text',
             'pos_team_score', 'def_pos_team_score', 'wp_before', 'game_play_number', 'home', 'away', 'pass', 'rush', 'sack',
             'home_team_division', 'away_team_division', 'home_team_pregame_elo', 'away_team_pregame_elo']
@@ -136,7 +167,8 @@ def rank(season, saturday):
                              elo=round(float(elo)), score=round(score, 2), game=f'{m.away_team} at {m.home_team} {as_}-{hs}'))
     df = pd.DataFrame(rows)
     if not len(df):
-        raise SystemExit('no qualifying drives')
+        log('no qualifying drives: nothing to pin')
+        raise SystemExit(4)
     return df.sort_values('score', ascending=False).drop_duplicates('gid')
 
 
@@ -148,6 +180,7 @@ def main():
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--no-fetch', action='store_true')
     ap.add_argument('--no-push', action='store_true')
+    ap.add_argument('--commit-only', action='store_true', help='commit but do not push')
     a = ap.parse_args()
     today = dt.date.today()
     saturday = dt.date.fromisoformat(a.saturday) if a.saturday else today - dt.timedelta(days=(today.weekday() - 5) % 7)
@@ -156,7 +189,8 @@ def main():
     days = [start + dt.timedelta(days=i) for i in range(a.days)]
     log(f'Saturday {saturday}, season {season}, pinning {days[0]}..{days[-1]}')
 
-    D = json.load(open(DATA, encoding='utf-8'))
+    before = open(DATA, 'rb').read()
+    D = json.loads(before)
     if not a.dry_run and str(days[0]) in D.get('featured', {}):
         pinned = D['scen'][D['featured'][str(days[0])]]
         if pinned.get('date', '') >= str(saturday - dt.timedelta(days=2)):
@@ -166,6 +200,9 @@ def main():
     if not a.no_fetch:
         after = dt.datetime.combine(saturday + dt.timedelta(days=1), dt.time(6, 0), dt.timezone.utc)   # 2am ET Sunday
         if not fetch(season, after):
+            if not (schedule(season).et == saturday).any():
+                log(f'no games on {saturday}: nothing to pin')
+                sys.exit(4)
             log('feed not refreshed since Saturday night yet')
             sys.exit(3)
     df = rank(season, saturday)
@@ -183,8 +220,19 @@ def main():
     pins = [f'{r.gid}={d}' for r, d in zip(picks.itertuples(), days)]
     subprocess.run([sys.executable, 'merge_featured.py', out, *pins], cwd=ROOT + '/build', check=True)
 
+    merged = open(DATA, 'rb').read()
+    if merged == before:
+        log('data.json unchanged: these drives are already pinned')
+        sys.exit(2)
+    # the published drives, games and dates must come through byte for byte; only additions get committed
+    bad, _, D = check_additions.check_text(before.decode('utf-8'), merged.decode('utf-8'))
+    if bad:
+        open(DATA, 'wb').write(before)
+        log('data.json changed more than additions, put it back:', *bad[:20], sep='\n  ')
+        sys.exit(1)
+    log('only additions:', check_additions.summary(json.loads(before), D))
+
     # sanity: every pinned day resolves to a playable drive
-    D = json.load(open(DATA, encoding='utf-8'))
     for d in days[:len(picks)]:
         s = D['scen'][D['featured'][str(d)]]
         L = s['lineup']
@@ -198,6 +246,9 @@ def main():
     git = ['git', '-c', 'user.name=Rick McIntyre', '-c', 'user.email=pmcintyre1823@gmail.com']
     subprocess.run(git + ['add', 'docs/data.json'], cwd=ROOT, check=True)
     subprocess.run(git + ['commit', '-q', '-m', msg], cwd=ROOT, check=True)
+    if a.commit_only:
+        log('committed, not pushed')
+        return
     subprocess.run(['git', 'push', '-q', 'origin', 'HEAD'], cwd=ROOT, check=True)
     log('pushed')
 
