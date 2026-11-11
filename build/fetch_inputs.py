@@ -2,11 +2,14 @@
 the team table, pinned by SHA-256 to the copies the published data.json was built from (they matched SportsDataverse's
 releases on Oct 26, 2026). weekly_featured.py downloads the current season itself.
 
-    python fetch_inputs.py          # skips files already there with the right hash
+    python fetch_inputs.py          # downloads only the files raw/ doesn't have (the job keeps them in its cache)
 
 raw/wiki/ isn't needed here: build.py only uses it for team-seasons cached by wiki_coaches.py (2023-2025), and a
-featured build writes current-season drives only. If upstream re-processes an old season, its new copy is used with
-a warning and the run goes on. Exit 1 only when a file can't be had. Prints pinned=true|false for the job's cache.
+featured build writes current-season drives only. Upstream re-issues old seasons now and then; a download that isn't
+the pinned copy is used anyway, with a notice. Past seasons' rosters, schedules and coach files don't enter a featured
+build at all (on Nov 11, 2026 the job built byte-identical drives from re-issued 2023-25 rosters and coach files);
+their play-by-play and the team table do, through league averages. Exit 1 only when a file can't be had.
+Prints downloaded=true|false for the job's cache.
 """
 import hashlib, os, sys, urllib.request
 from weekly_featured import RAW, log, release, retry
@@ -38,26 +41,28 @@ def sha(path):
 
 def main():
     os.makedirs(RAW, exist_ok=True)
-    pinned, assets = True, {}
+    downloaded, newer, assets = False, [], {}
     for tag, name, local, want in PINNED:
         dest = RAW + local
-        if os.path.exists(dest) and sha(dest) == want:
-            log(f'  {local}: have it')
+        if os.path.exists(dest):
+            log(f'  {local}: have it' + ('' if sha(dest) == want else ' (a newer upstream copy than the pinned one)'))
             continue
         if tag not in assets:
             assets[tag] = {a['name']: a for a in retry(release, tag)['assets']}
         tmp = dest + '.part'
         retry(urllib.request.urlretrieve, assets[tag][name]['browser_download_url'], tmp)
         os.replace(tmp, dest)
+        downloaded = True
         got = sha(dest)
-        log(f'  {local}: downloaded {os.path.getsize(dest) // 1024} KB' + ('' if got == want else f', NOT the pinned copy ({got[:12]})'))
+        log(f'  {local}: downloaded {os.path.getsize(dest) // 1024} KB' + ('' if got == want else ', a newer upstream copy than the pinned one'))
         if got != want:
-            pinned = False
-            print(f'::warning title=Input changed upstream::{local} differs from the copy data.json was built from; '
-                  f'the featured build uses the new one. Update its hash in build/fetch_inputs.py if that is fine.', flush=True)
-    print(f'pinned={str(pinned).lower()}')
+            newer.append(local)
+    if newer:
+        print(f'::notice title=Re-issued upstream::{", ".join(newer)} changed upstream since data.json was built; '
+              f'using the new copies (see build/fetch_inputs.py). Nothing to do.', flush=True)
+    print(f'downloaded={str(downloaded).lower()}')
     if os.environ.get('GITHUB_OUTPUT'):
-        open(os.environ['GITHUB_OUTPUT'], 'a').write(f'pinned={str(pinned).lower()}\n')
+        open(os.environ['GITHUB_OUTPUT'], 'a').write(f'downloaded={str(downloaded).lower()}\n')
 
 
 if __name__ == '__main__':

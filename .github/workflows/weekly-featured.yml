@@ -91,19 +91,21 @@ jobs:
           cache-dependency-path: build/requirements.txt
       - run: pip install -r build/requirements.txt
 
-      # the 2023-2025 seasons (about 380 MB), pinned by hash in fetch_inputs.py; weekly_featured.py fetches the current one
+      # the 2023-2025 seasons (about 380 MB, listed in fetch_inputs.py), downloaded once and then kept in the cache so
+      # every week builds from the same copies; weekly_featured.py fetches the current season itself
       - name: Restore the fixed inputs
         id: cache
         uses: actions/cache/restore@v6
         with:
           path: raw
-          key: raw-inputs-${{ hashFiles('build/fetch_inputs.py') }}
+          key: raw-inputs-${{ hashFiles('build/fetch_inputs.py') }}-${{ github.run_id }}
+          restore-keys: raw-inputs-${{ hashFiles('build/fetch_inputs.py') }}-
       - name: Download any that are missing
         id: inputs
         working-directory: build
         run: python fetch_inputs.py
       - name: Keep them for next week
-        if: steps.cache.outputs.cache-hit != 'true' && steps.inputs.outputs.pinned == 'true'
+        if: steps.inputs.outputs.downloaded == 'true'
         uses: actions/cache/save@v6
         with:
           path: raw
