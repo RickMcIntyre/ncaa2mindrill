@@ -888,14 +888,14 @@ function benchLine(key, r) {
 }
 
 // ---------- screens ----------
-let tab = 'daily';
+let tab = 'home';
 let survView = 'run';
 function paintLocks() { document.documentElement.classList.toggle('locked', !premiumUnlocked()); }
 function setTab(t) {
   paintLocks();
   if (t === 'practice') { survView = 'library'; t = 'survival'; } // the drive library lives under Survival
   tab = t;
-  for (const [id, k] of [['tabDaily', 'daily'], ['tabSaban', 'saban'], ['tabCignetti', 'cignetti'], ['tabSurvival', 'survival'], ['tabTourney', 'tourney'], ['tabCoaches', 'coaches']]) $('#' + id).setAttribute('aria-pressed', String(k === t));
+  for (const [id, k] of [['tabHome', 'home'], ['tabDaily', 'daily'], ['tabSaban', 'saban'], ['tabCignetti', 'cignetti'], ['tabSurvival', 'survival'], ['tabTourney', 'tourney']]) { const b = $('#' + id); if (b) b.setAttribute('aria-pressed', String(k === t)); }
   document.documentElement.classList.toggle('saban', t === 'saban');
   document.documentElement.classList.toggle('cignetti', t === 'cignetti');
   const sn = $('#subnav');
@@ -911,13 +911,50 @@ function setTab(t) {
       sn.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { survView = b.dataset.view; setTab('survival'); });
     } else sn.hidden = true;
   }
-  if (t === 'daily') showDaily('daily');
+  if (t === 'home') showHome();
+  else if (t === 'daily') showDaily('daily');
   else if (t === 'saban' || t === 'cignetti') { const v = hardView[t] || 'today'; if (v === 'library' && premiumUnlocked()) renderLibrary(t); else if (v === 'survival' && premiumUnlocked()) showSurvival(t); else showDaily(t); }
   else if (t === 'survival') { if (survView === 'library') showPractice(); else showSurvival('free'); }
   else if (t === 'tourney') showTourney();
   else showCoaches();
   if (window.Sound && !(G && G.st && !G.done && /game/.test(app.firstElementChild?.className || ''))) Sound.ambience(0);
   window.scrollTo(0, 0);
+}
+
+// ---------- home: today's drive on top, the other ways to play under it ----------
+const LOCK_SVG = '<svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>';
+function showHome() {
+  const { no, sc } = dailyScenario(), gl = gameLabel(sc), off = T_(sc.off), def = T_(sc.dfn);
+  const prev = (store.daily || {})[no], done = prev && prev.done;
+  $('#subline').textContent = `No. ${no} · ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+  const fresh = freshLine(sc), S = survState('free'), T = tState(), paid = premiumUnlocked();
+  const surv = S.cur && !S.cur.over ? `Round ${S.cur.streak + 1} is waiting` : S.best ? `Best run: ${S.best}` : 'No runs yet';
+  const tour = T.titles ? `${T.titles} title${T.titles > 1 ? 's' : ''} in ${T.runs} run${T.runs > 1 ? 's' : ''}` : T.runs ? `${T.runs} run${T.runs > 1 ? 's' : ''}, no title yet` : 'Any team since 2023';
+  const card = (id, color, k, v, s, cls = '') => `<button class="mcard ${cls}" data-go="${id}" style="--mc:${color}"><span class="k">${cls ? LOCK_SVG : ''}${k}</span><span class="v">${v}</span><span class="s">${s}</span><span class="p">Play</span></button>`;
+  app.innerHTML = `<section class="home">
+    <div class="hero">
+      <div class="eb">Today's drive · No. ${no}${fresh ? ` · <b>${esc(fresh)}</b>` : ''}</div>
+      <h2 class="hl">${headline(sc)}</h2>
+      <div class="hs">${clock(sc.secs)} left in the game</div>
+      <div class="ln">You're ${esc(off.school)}, ${sc.neutral ? 'against' : sc.home ? 'hosting' : 'at'} ${esc(def.school)} · ${esc(gl.when)}</div>
+      ${done ? `<div class="done">You finished at <b>${pct(prev.done.wp)}</b>. ${esc(sc.coach)} got ${pct(prev.coachWp != null ? prev.coachWp : sc.cwp)}.</div>` : ''}
+      <button class="go" data-go="daily">${done ? 'See your result' : 'Play today\'s drive'}</button>
+    </div>
+    <div class="mcards">
+      ${card('survival', 'var(--good)', 'Survival', 'Win to stay alive', surv)}
+      ${card('tourney', '#6ea8ff', 'Tournament', '12-team playoff', tour, paid ? '' : 'paid')}
+      ${card('cignetti', '#e0b43a', 'Cignetti · Hard', 'Two scores down', 'A new drive every day', paid ? '' : 'paid')}
+      ${card('saban', '#d9433a', 'Saban · Hardest', 'Two TDs down', 'Nobody wins this one', paid ? '' : 'paid')}
+    </div>
+    <div class="hlist">
+      <button data-go="practice"><span class="i">🎞️</span><span><b>Drive library</b><small>${D.scen.length.toLocaleString()} real late drives, any team, any season</small></span><span class="chev">›</span></button>
+      <button data-go="coaches"><span class="i">📋</span><span><b>Coaches</b><small>Who added the most on late drives, 2023–2025</small></span><span class="chev">›</span></button>
+    </div>
+    <div class="htiles"><button id="hStats"><span class="i">▮▮</span>Your stats</button><button id="hHelp"><span class="i">?</span>How to play</button></div>
+  </section>`;
+  app.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { const g = b.dataset.go; if (g === 'survival') survView = 'run'; if (g === 'tourney') tView = 'home'; setTab(g); });
+  $('#hStats').onclick = showStats;
+  $('#hHelp').onclick = () => $('#helpDlg').showModal();
 }
 
 function showDaily(mode) {
@@ -976,7 +1013,7 @@ function renderPlay() {
       ${bug(st, sc)}
       <div class="sit">${sitBits.join(' · ')}</div>
       <div class="fieldbox" id="field">${fieldSVG(st, sc, G.anim)}</div>
-      ${lineupHTML(sc)}
+      <details class="lineupbox" ${wideScreen() ? 'open' : ''}><summary>Lineup <span>tap a player to bench him</span></summary>${lineupHTML(sc)}</details>
       ${logHTML()}
     </div>
     <div class="side" id="side"></div>
@@ -999,10 +1036,11 @@ function renderPlay() {
   }
 }
 
+const wideScreen = () => !window.matchMedia || matchMedia('(min-width: 861px)').matches;
 function logHTML() {
   const items = G.animating ? G.log.slice(0, -1) : G.log;   // no spoilers: the newest line waits until the play is over
   if (!items.length) return '';
-  return `<details class="log" open><summary>Play-by-play</summary><ol>${items.map(l => `<li><span>${esc(l.sit)}</span> — ${esc(l.text)}</li>`).join('')}</ol></details>`;
+  return `<details class="log" ${wideScreen() ? 'open' : ''}><summary>Play-by-play · ${items.length}</summary><ol>${items.map(l => `<li><span>${esc(l.sit)}</span> — ${esc(l.text)}</li>`).join('')}</ol></details>`;
 }
 
 // who the stadium is rooting for, and how loud it is: a close game late gets loud
@@ -1135,22 +1173,16 @@ function renderSide() {
       <div class="mods"><span class="gl">Tempo</span>${tempoBtn('hustle', 'Hustle', 'Sprint to the line, snap it fast')}${tempoBtn('neutral', 'Neutral', 'Normal pace')}${tempoBtn('milk', 'Milk it', 'Let the play clock run down')}</div></div>`;
   }
   if (st.twoPt) h += `<div class="note"><b>Two-point try.</b> One snap from the 3, untimed. Run it, throw it, or get cute. It is graded like every other call.</div>`;
-  h += `<div class="mods pers"><span class="gl" title="First digit backs, second tight ends, the rest receivers">Personnel</span>${Object.keys(PERSONNEL).map(k => `<button class="mod" data-pers="${k}" aria-pressed="${G.pers === k}" title="${esc(persOf(k).sub)}${persAvailable(sc, k) ? '' : ' · not enough bodies on this roster'}" ${persAvailable(sc, k) ? '' : 'disabled'}>${k}</button>`).join('')}<span class="note">${esc(persOf(G.pers).sub)}. Sub, and the defense subs too.</span></div>`;
-  const groups = {};
-  for (const [id, c] of Object.entries(CALLS)) if (c.grp) (groups[c.grp] ||= []).push(id);
-  for (const [g, ids] of Object.entries(groups)) {
-    if (st.twoPt && g === 'Clock & kicks') continue;
-    h += `<div class="grp"><div class="gl">${g}</div><div class="calls">`;
-    for (const id of ids) {
-      const c = CALLS[id], ok = available(st, id);
-      if (!ok && (id === 'r_sneak' || id === 'hail' || id === 'kneel' || id === 'punt')) continue;
-      let sub = c.sub;
-      if (id === 'fg') sub = ok ? `${st.ytg + 17}-yard try · ${pct(fgProb(st.ytg, sc.kick))} make rate${sc.kick >= .04 ? ' · strong kicker' : sc.kick <= -.04 ? ' · shaky kicker' : ''}` : 'Out of range';
-      if (id === 'run') sub += ` · ${short(sc.lineup.rb.name)}`;
-      h += `<button class="call ${c.pick ? 'wide' : ''}" data-call="${id}" ${ok ? '' : 'disabled'}><b>${esc(c.label)}</b><small>${esc(sub)}</small></button>`;
-    }
-    h += `</div></div>`;
-  }
+  h += `<div class="mods pers"><span class="gl" title="First digit backs, second tight ends, the rest receivers">Personnel</span>${Object.keys(PERSONNEL).map(k => `<button class="mod" data-pers="${k}" aria-pressed="${G.pers === k}" title="${esc(persOf(k).sub)}${persAvailable(sc, k) ? '' : ' · not enough bodies on this roster'}" ${persAvailable(sc, k) ? '' : 'disabled'}>${k}</button>`).join('')}<span class="note" title="Sub, and the defense subs too">${esc(persOf(G.pers).sub)}</span></div>`;
+  const bigSub = { run: short(sc.lineup.rb.name), pass: short(sc.lineup.qb.name), trick: 'Flea flicker & more' };
+  h += `<div class="bigcalls">${['run', 'pass', 'trick'].map(id => `<button class="bigcall" data-call="${id}" ${available(st, id) ? '' : 'disabled'}><b>${id === 'trick' ? 'Trick' : esc(CALLS[id].label)}</b><small>${esc(bigSub[id])}</small></button>`).join('')}</div>`;
+  const rest = Object.keys(CALLS).filter(id => CALLS[id].grp && !CALLS[id].pick && !(st.twoPt && CALLS[id].grp === 'Clock & kicks'))
+    .filter(id => available(st, id) || !['r_sneak', 'hail', 'kneel', 'punt'].includes(id));
+  h += `<div class="calls small">${rest.map(id => {
+    const c = CALLS[id], ok = available(st, id);
+    const sub = id === 'fg' ? (ok ? `${st.ytg + 17} yards · ${pct(fgProb(st.ytg, sc.kick))}${sc.kick >= .04 ? ' · strong leg' : sc.kick <= -.04 ? ' · shaky leg' : ''}` : 'Out of range') : c.sub;
+    return `<button class="call" data-call="${id}" ${ok ? '' : 'disabled'}><b>${esc(c.label)}</b><small>${esc(sub)}</small></button>`;
+  }).join('')}</div>`;
   side.innerHTML = h;
   const tb = $('#toBtn'); if (tb) tb.onclick = () => { G.useTO = !G.useTO; if (G.useTO && window.Sound) Sound.play('timeout'); renderSide(); };
   side.querySelectorAll('[data-tempo]').forEach(b => b.onclick = () => { G.tempo = b.dataset.tempo; renderSide(); });
@@ -1801,11 +1833,6 @@ function renderFinal() {
       <div class="${you ? 'winner' : ''}"><div class="who">You</div><div class="big">${pct(d.wp)}<small>win chance</small></div><div class="end">${esc(d.desc)}</div><div class="note">Score ${off.abbr} ${d.os}, ${def.abbr} ${d.ds} · ${d.snaps} snaps</div></div>
       <div class="${you ? '' : 'winner'}"><div class="who">${esc(sc.coach)}</div><div class="big">${pct(sc.cwp)}<small>win chance</small></div><div class="end">${esc(resultWord(sc))}. ${sc.won ? 'Won' : 'Lost'} ${sc.final[0]}–${sc.final[1]}.</div><div class="note">Win chance at the end of the real drive, same model as yours.</div></div>
     </div>
-    <div id="lbCard" class="card lb" hidden></div>
-    <div class="vs">
-      <div id="pctCard"><div class="who">Vs simulated play-callers</div><div class="big" id="pctBig">…</div><div class="end" id="pctText">Simulating 300 college play-callers on this exact drive…</div><div class="hist" id="pctHist"></div></div>
-      <div>${res ? `<div class="who">You call it like</div><div class="big" style="font-size:30px;line-height:1.1">${esc(res.best.coach)}</div><div class="end">${esc(res.best.school)} · ${pct(res.best.pass)} pass overall, ${pct(res.best.early)} on early downs, ${pct(res.best.pd)} on passing downs</div><div class="note">You: ${pct(res.me.pass)} pass, ${pct(res.me.early)} early downs, ${pct(res.me.pd)} passing downs, ${pct(res.me.deep)} deep shots (${res.n} calls). Next closest: ${esc(res.next.map(c => c.coach).join(', '))}. ${res.n < 6 ? 'Small sample. Coaches get a season; you got a drive.' : res.me.pass >= 0.8 ? 'Your tendencies, his résumé. You throw a lot.' : res.me.pass <= 0.35 ? 'Your tendencies, his résumé. You run a lot, on purpose, late.' : 'Your tendencies, his résumé.'}</div>` : '<div class="who">You call it like</div><div class="note">Call a few plays to get a match.</div>'}</div>
-    </div>
     <div class="sharebox">
       <canvas id="shareCanvas" width="1200" height="740" aria-label="Share card"></canvas>
       <div class="row">
@@ -1818,14 +1845,18 @@ function renderFinal() {
       ${G.mode === 'daily' || isHardMode(G.mode) ? `<div class="row"><button class="cta ghost" id="retry">${G.retry ? 'Retry again' : 'Retry this drive'}</button></div><div class="note" style="text-align:center">Retries are for pride. The record, the leaderboard and the trophies keep your first attempt.</div>` : ''}
     </div>
     ${G.mode === 'survival' && d.surv ? `<div class="row">${d.surv.won ? '<button class="cta" id="survNext">Next drive · round ' + (d.surv.round + 1) + '</button>' : '<button class="cta" id="survNew">Start a new run</button>'}</div>` : ''}
-    <div class="realdrive cmp">
-      <div class="h">Snap by snap: you vs ${esc(sc.coach)}</div>
+    <div id="lbCard" class="card lb" hidden></div>
+    <div class="vs">
+      <div id="pctCard"><div class="who">Vs simulated play-callers</div><div class="big" id="pctBig">…</div><div class="end" id="pctText">Simulating 300 college play-callers on this exact drive…</div><div class="hist" id="pctHist"></div></div>
+      <div>${res ? `<div class="who">You call it like</div><div class="big" style="font-size:30px;line-height:1.1">${esc(res.best.coach)}</div><div class="end">${esc(res.best.school)} · ${pct(res.best.pass)} pass overall, ${pct(res.best.early)} on early downs, ${pct(res.best.pd)} on passing downs</div><div class="note">You: ${pct(res.me.pass)} pass, ${pct(res.me.early)} early downs, ${pct(res.me.pd)} passing downs, ${pct(res.me.deep)} deep shots (${res.n} calls). Next closest: ${esc(res.next.map(c => c.coach).join(', '))}. ${res.n < 6 ? 'Small sample. Coaches get a season; you got a drive.' : res.me.pass >= 0.8 ? 'Your tendencies, his résumé. You throw a lot.' : res.me.pass <= 0.35 ? 'Your tendencies, his résumé. You run a lot, on purpose, late.' : 'Your tendencies, his résumé.'}</div>` : '<div class="who">You call it like</div><div class="note">Call a few plays to get a match.</div>'}</div>
+    </div>
+    <details class="fold"><summary>Snap by snap: you vs ${esc(sc.coach)}</summary><div class="realdrive cmp">
       <div class="cmpsum">${cmp.summary}</div>
       <div class="cmpgrid"><div class="cmphead">You</div><div class="cmphead">${esc(sc.coach)}</div>${cmp.rows}</div>
       ${cmp.turn ? `<div class="note">${cmp.turn}</div>` : ''}
-    </div>
-    <div class="realdrive"><div class="h">What ${esc(sc.coach)} actually called</div><ol>${real}</ol></div>
-    ${G.log.length ? `<div class="realdrive"><div class="h">Your drive</div><ol>${G.log.map(l => `<li><span>${esc(l.sit)}</span>${esc(l.text)}</li>`).join('')}</ol></div>` : ''}
+    </div></details>
+    <details class="fold"><summary>What ${esc(sc.coach)} actually called</summary><div class="realdrive"><ol>${real}</ol></div></details>
+    ${G.log.length ? `<details class="fold"><summary>Your drive, snap by snap</summary><div class="realdrive"><ol>${G.log.map(l => `<li><span>${esc(l.sit)}</span>${esc(l.text)}</li>`).join('')}</ol></div></details>` : ''}
     <div class="row"><button class="cta ghost" id="more">Play another drive</button></div>
   </section>`;
   drawShareCard($('#shareCanvas'));
@@ -2385,12 +2416,15 @@ function showStats() {
 }
 
 // ---------- boot ----------
+$('#tabHome').onclick = () => setTab('home');
 $('#tabDaily').onclick = () => setTab('daily');
 $('#tabSaban').onclick = () => setTab('saban');
 $('#tabCignetti').onclick = () => setTab('cignetti');
 $('#tabSurvival').onclick = () => { survView = 'run'; setTab('survival'); };
 $('#tabTourney').onclick = () => { tView = 'home'; setTab('tourney'); };
-$('#tabCoaches').onclick = () => setTab('coaches');
+$('#fHelp').onclick = e => { e.preventDefault(); $('#helpDlg').showModal(); };
+$('#fLibrary').onclick = e => { e.preventDefault(); setTab('practice'); };
+$('#fCoaches').onclick = e => { e.preventDefault(); setTab('coaches'); };
 $('#helpBtn').onclick = () => $('#helpDlg').showModal();
 $('#helpClose').onclick = () => $('#helpDlg').close();
 $('#statsBtn').onclick = showStats;
@@ -2417,7 +2451,7 @@ fetch('data.json').then(r => r.json()).then(d => {
   beacon('/hit', { token: playerToken(), src: firstSource() });
   const back = location.search.includes('unlock=');
   let paidFrom = null; if (back) { try { paidFrom = localStorage.getItem('cfb2md:paidFrom'); localStorage.removeItem('cfb2md:paidFrom'); } catch { /* use the link's own tab */ } }
-  const startTab = ['saban', 'cignetti', 'tourney'].includes(paidFrom) ? paidFrom : location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : location.hash === '#survival' ? 'survival' : location.hash === '#tournament' ? 'tourney' : 'daily';
+  const startTab = ['saban', 'cignetti', 'tourney'].includes(paidFrom) ? paidFrom : location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : location.hash === '#survival' ? 'survival' : location.hash === '#tournament' ? 'tourney' : location.hash === '#daily' ? 'daily' : location.hash === '#coaches' ? 'coaches' : 'home';
   if (back) claimFromUrl().then(() => setTab(startTab)); else setTab(startTab);
   if (!seen && !back) $('#helpDlg').showModal();
 }).catch(() => { app.innerHTML = '<p class="note">Could not load the drive data. Reload the page to try again.</p>'; });
