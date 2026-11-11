@@ -40,7 +40,7 @@
   <div class="grid" id="tiles"></div>
   <div class="chart"><div class="tile" style="padding:0;border:0;background:none"><div class="k">Visits, last 30 days</div></div><div class="bars" id="bars"></div></div>
   <div class="chart"><div class="tile" style="padding:0;border:0;background:none"><div class="k">Where they came from, last 30 days</div></div><table class="src" id="src"></table><div class="foot" style="margin-top:8px">Sources come from <code>utm_source</code> / <code>utm_campaign</code> on the link (or <code>?s=</code>), first touch per browser. Unlocks are credited to the source the browser first arrived from. Links for ads: <code>https://ncaa2mindrill.com/?utm_source=x&amp;utm_campaign=launch</code>.</div></div>
-  <div class="foot">Visits are page loads; "people" is distinct browsers (a random token, nothing personal). Unlocks are what browsers reported after a Stripe return; "Stripe-confirmed" comes straight from Stripe once the worker has the key. Refreshes every minute. <a href="/">Back to the game</a></div>
+  <div class="foot">Visits are page loads; "people" is distinct browsers (a random token, nothing personal). New people are browsers seen for the first time in that window. Unlocks are what browsers reported after a Stripe return; "Stripe-confirmed" comes straight from Stripe (it also counts Song of the Day payments in the same account). The numbers are at most 5 minutes old, and the page refreshes every 10 minutes while it's on screen. <a href="/">Back to the game</a></div>
 </main>
 <script>
   const API = 'https://ncaa2mindrill-unlock.unlock-worker.workers.dev';
@@ -49,10 +49,10 @@
     try {
       const r = await fetch(API + '/stats', { cache: 'no-store' }); const d = await r.json();
       if (!d.ok) throw new Error('stats not ok');
-      document.getElementById('sub').textContent = `As of ${new Date().toLocaleString()} · UTC day ${d.today}`;
+      document.getElementById('sub').textContent = `As of ${new Date(d.asOf || Date.now()).toLocaleString()} · UTC day ${d.today}`;
       const t = [
         ['Visits today', d.visits.today.v, `${n(d.visits.today.u)} people`],
-        ['Visits, 7 days', d.visits.week.v, `${n(d.visits.week.u)} people`],
+        ['Visits, 7 days', d.visits.week.v, `${n(d.visits.week.u)} new people`],
         ['Visits, all time', d.visits.all.v, `${n(d.visits.all.u)} people`],
         ['Daily drives played today', d.plays.today, `${n(d.plays.all)} all time`],
         ['Unlocks today', d.unlocks.today, `${n(d.unlocks.all)} all time (browser-reported)`],
@@ -64,10 +64,13 @@
       document.getElementById('bars').innerHTML = days.map(x => { const r = m[x] || { v: 0, u: 0 }; return `<i style="height:${Math.max(2, r.v / mx * 100)}%" data-t="${x}: ${r.v} visits, ${r.u} people"></i>`; }).join('');
       const ub = Object.fromEntries((d.unlocksBySrc || []).map(x => [x.src, x.c]));
       const rows = (d.bySrc || []).map(x => `<tr><td>${x.src}</td><td class="n">${n(x.v)}</td><td class="n">${n(x.u)}</td><td class="n">${n(ub[x.src] || 0)}</td><td class="n">${x.u ? ((ub[x.src] || 0) / x.u * 100).toFixed(1) + '%' : '–'}</td></tr>`).join('');
-      document.getElementById('src').innerHTML = `<tr><th>Source</th><th class="n">Visits</th><th class="n">People</th><th class="n">Unlocks</th><th class="n">Unlock rate</th></tr>${rows || '<tr><td colspan="5">No visits yet.</td></tr>'}`;
+      document.getElementById('src').innerHTML = `<tr><th>Source</th><th class="n">Visits</th><th class="n">New people</th><th class="n">Unlocks</th><th class="n">Unlock rate</th></tr>${rows || '<tr><td colspan="5">No visits yet.</td></tr>'}`;
     } catch (e) { document.getElementById('sub').innerHTML = `<span class="err">Could not load stats: ${e.message}</span>`; }
   }
-  load(); setInterval(load, 60000);
+  // every reload costs database reads, so only refresh while someone is looking
+  let last = 0;
+  const tick = () => { if (document.visibilityState === 'visible' && Date.now() - last >= 10 * 60e3) { last = Date.now(); load(); } };
+  tick(); setInterval(tick, 60e3); document.addEventListener('visibilitychange', tick);
 </script>
 </body>
 </html>
