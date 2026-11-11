@@ -578,7 +578,7 @@ function diffFor() {
 // session id, the unlock worker verifies it with Stripe and returns a signed unlock code, which the site keeps (and the
 // player can paste on another device).
 const WEB_UNLOCKED = false;
-const STRIPE_LINK = 'https://buy.stripe.com/4gMcN47ic63E3UZ9dedAk00';   // Stripe → Payment Links → the $0.99 "Hard modes" link
+const STRIPE_LINK = 'https://buy.stripe.com/bJe28q4600Jk4Z3blmdAk01';   // Stripe → Payment Links → the $2.99 "Cignetti, Saban and the Tournament" link (the $0.99 "Hard modes" one before it)
 // What the link charges. Change it with the link, and the price in index.html's help and privacy.html. The app shows
 // the store's own price string instead.
 const PRICE = 2.99;
