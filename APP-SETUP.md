@@ -12,10 +12,10 @@ already in the repo.
 
 ## 2. The product (you, in each store, then RevenueCat)
 
-One non-consumable in-app purchase in both stores. Use the same id everywhere: **`hard_modes`**, $0.99 (tier 1).
+One non-consumable in-app purchase in both stores. Use the same id everywhere: **`hard_modes`**, $2.99, the same price as the web unlock. It opens Cignetti mode, Saban mode and the Tournament; the id stays `hard_modes` so nothing in RevenueCat or `native.js` changes.
 
-- App Store Connect → your app → In-App Purchases → `+` → Non-Consumable → reference name "Hard modes", product id `hard_modes`, price tier $0.99, localization "Saban mode + Cignetti mode".
-- Google Play Console → your app → Monetize → In-app products → Create → id `hard_modes`, $0.99, "Saban mode + Cignetti mode". Activate it.
+- App Store Connect → your app → In-App Purchases → `+` → Non-Consumable → reference name "Paid modes", product id `hard_modes`, price $2.99, localization "Cignetti mode, Saban mode and the Tournament".
+- Google Play Console → your app → Monetize → In-app products → Create → id `hard_modes`, $2.99, "Cignetti mode, Saban mode and the Tournament". Activate it.
 - RevenueCat → Products: import `hard_modes` from both stores. Entitlements: create **`hard_modes`** and attach both products. Offerings: the default offering gets one package ("Lifetime") pointing at the product.
 - RevenueCat → Project settings → API keys: copy the **public** iOS key (`appl_…`) and Android key (`goog_…`) into `docs/native.js` (`RC_KEYS`). These are safe to ship.
 - Apple also needs the App Store Connect **In-App Purchase Key** and shared secret pasted into RevenueCat (their setup page walks through it); Google needs the Play **service account JSON** (same).

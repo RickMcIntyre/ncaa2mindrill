@@ -4,13 +4,13 @@ Everything here is ready to paste. Account creation, the card on file, and every
 
 ## 0. Read this first: the math
 
-The product is free with a $0.99 unlock. Stripe keeps about $0.33 of that, so one unlock nets **$0.66**. Daily-game sites convert roughly 1–3% of visitors to a paid upgrade, which puts revenue per paid visitor at **$0.01–0.02**. Paid clicks in this audience cost $0.20–$2.00. Paid ads cannot pay for themselves on direct unlocks; they lose 20–100× on every visitor.
+The product is free with a $2.99 unlock (Cignetti mode, Saban mode and the Tournament; $0.99 for the two hard modes until Oct 19, 2026). Stripe keeps about $0.39 of that, so one unlock nets **$2.60** (at $0.99 it netted $0.66). Daily-game sites convert roughly 1–3% of visitors to a paid upgrade, which puts revenue per paid visitor at **$0.03–0.08**. Paid clicks in this audience cost $0.20–$2.00. Paid ads still cannot pay for themselves on direct unlocks; they lose roughly 3–75× on every visitor.
 
 So paid media is a seeding play, not a sales engine. It works only if the people it brings share (the share card, the daily link, the challenge-a-friend link when it exists) and come back on their own. Run it as a two-week test with fixed spend, measure the loop, then decide. If the loop isn't there, the money is better spent on the app launch or on one good creator.
 
 What would make paid viable later:
-- **Price.** $2.99–$3.99 in the app, with the free site as the funnel. Each unlock then nets $2–2.70, and a $1–2 cost per install starts to work.
-- **A yearly pass** on the web ($4.99: libraries, Survival deep end, both hard modes) instead of a one-time $0.99.
+- **Price.** Done on the web on Oct 19, 2026: $2.99 for one unlock of all three paid modes. Use the same price in the app, with the free site as the funnel; a $1–2 cost per install starts to work there.
+- **A yearly pass** on the web ($4.99: libraries, Survival deep end, both hard modes) instead of a one-time unlock.
 - **Sponsorship, not display ads.** A sportsbook or a CFB newsletter sponsoring "today's drive" pays far more per visitor than any ad network. (Sportsbook affiliate deals have state-by-state rules; get the contract reviewed before taking one.)
 
 **Budget for the test: $420 over 14 days ($30/day).** Kill rules are in section 6.
@@ -21,7 +21,7 @@ What would make paid viable later:
 - Link format: `https://ncaa2mindrill.com/?utm_source=SOURCE&utm_campaign=CAMPAIGN`
   - sources: `google`, `x`, `meta`, `reddit`, `tiktok`
   - campaigns: `search`, `launch`, `saban`, `survival`, `daily-YYYYMMDD`
-- Platform pixels load only when their ids are pasted into `window.ADS` at the top of the scripts in `docs/index.html` (Google tag id, Meta Pixel id, X Pixel id plus X's two event ids). Then the site sends: `drive_start`, `drive_done`, `begin_checkout`, `purchase` (value 0.99 USD). Optimise campaigns on `purchase` once there are 20+ a week; before that, on `drive_start`.
+- Platform pixels load only when their ids are pasted into `window.ADS` at the top of the scripts in `docs/index.html` (Google tag id, Meta Pixel id, X Pixel id plus X's two event ids). Then the site sends: `drive_start`, `drive_done`, `begin_checkout`, `purchase` (value 2.99 USD, from `PRICE` in app.js). Optimise campaigns on `purchase` once there are 20+ a week; before that, on `drive_start`.
 - The privacy page already says ad tags may load when ads run.
 
 ## 2. Google Search — $5/day
@@ -60,7 +60,7 @@ Ad copy for B: "The college version. Real FBS drives, real coaches."
 1. Take over a real late-game FBS drive. Call every snap. See if you out-call the head coach.
 2. Real scores, clocks, players and outcomes from three seasons. Every snap animated. Free.
 3. Runs, routes, trick plays, two-point tries, tempo. Then a grade, a percentile and a verdict.
-4. Hard modes for $0.99 once: Cignetti and Saban. The rest stays free, every day.
+4. Tournament and hard modes, $2.99 once. The daily drive stays free.
 
 Sitelinks: Today's drive (/), Survival (/#survival), Saban mode (/#saban), Coaches (/#coaches).
 

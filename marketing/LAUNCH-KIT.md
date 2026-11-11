@@ -20,7 +20,7 @@ Voice: dry, specific, no hype, no exclamation points, no jokes at a real coach. 
 
 7/ Today's drive: {away} at {home}, {year}. {Down by N}, {clock} left. {Coach} went {what he did}. Your turn.
 
-8/ Free. Two extra daily drives for $0.99: Cignetti mode (two scores down: a touchdown, an onside kick and a field goal) and Saban mode (two touchdowns down: the 28–3 drives). ncaa2mindrill.com
+8/ Free. One $2.99 unlock adds two extra daily drives, Cignetti mode (two scores down: a touchdown, an onside kick and a field goal) and Saban mode (two touchdowns down: the 28–3 drives), plus the Tournament: pick any team-season and win a 12-team playoff one drive at a time. ncaa2mindrill.com
 
 ---
 
@@ -36,7 +36,7 @@ At the end you're compared with the real head coach: your win chance after your 
 
 Honest caveats: it's a model. Players are rated by their season EPA, not matchups. The win-probability model is fitted on three seasons of Q4 FBS plays and is calibrated, but it's still a model. The animation is a drawing of what happened, not tracking data. It's fan-made and not affiliated with anyone.
 
-There are two paid daily drives ($0.99, once) from the ugly end of the pool: Cignetti mode (two scores down) and Saban mode (two touchdowns down). The rest stays free.
+One $2.99 unlock adds two daily drives from the ugly end of the pool, Cignetti mode (two scores down) and Saban mode (two touchdowns down), and the Tournament, a 12-team playoff with one real drive a round. The rest stays free.
 
 I'd love to hear which drives you want in the pool, and where the model is wrong.
 
