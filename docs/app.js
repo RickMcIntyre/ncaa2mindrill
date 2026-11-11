@@ -1975,11 +1975,12 @@ const hashStr = str => { let h = 2166136261; for (const ch of str) h = Math.imul
 const tTough = s => clamp((150 - s.secs) / 130, 0, 1) * 0.35 + clamp((s.ytg - 50) / 45, 0, 1) * 0.3 + clamp(deficit(s) / 8, 0, 1) * 0.35;
 // one-score drives only, so the Tournament never hands out the Cignetti and Saban shelves
 const tPool = () => tPoolMemo ||= D.std.filter(s => !isHopeless(s));
-// every team-season with a drive on file, its rating, and how many of its own drives a round can use
+// every rated FBS team-season, and how many of its own drives a round can use; a team that never trailed late
+// (2023 Georgia) has none, and plays every round on a drive borrowed from a team rated like it
 function tTeams() {
   if (tTeamsMemo) return tTeamsMemo;
   const by = {};
-  for (const s of D.scen) { const r = !s.feat && tRate(s.year, s.off); if (r) by[s.year + ':' + s.off] ||= { ...r, tid: s.off, year: s.year, own: 0 }; }
+  for (const [y, ts] of Object.entries(D.ratings)) for (const [tid, r] of Object.entries(ts)) by[y + ':' + tid] = { ...r, tid: +tid, year: +y, own: 0 };
   for (const s of tPool()) { const t = by[s.year + ':' + s.off]; if (t) t.own++; }
   return tTeamsMemo = Object.values(by);
 }
@@ -2079,7 +2080,7 @@ function tPicker() {
     const q = tQuery.trim().toLowerCase(), starts = x => x.team.school.toLowerCase().startsWith(q) ? 1 : 0;
     const list = (q ? schools.filter(x => (x.team.school + ' ' + x.team.mascot + ' ' + x.team.abbr).toLowerCase().includes(q)) : schools).sort((a, b) => (q ? starts(b) - starts(a) : 0) || b.best - a.best);
     const shown = list.slice(0, q ? 40 : 12);
-    $('#tlist').innerHTML = `<p class="note">${q ? `${list.length} school${list.length === 1 ? '' : 's'}.` : `Top programs first. Search any of the ${schools.length} schools with drives on file (${all.length} team-seasons).`} Rating: 50 is the median FBS team of that season; the best are 95–99.</p>
+    $('#tlist').innerHTML = `<p class="note">${q ? `${list.length} school${list.length === 1 ? '' : 's'}.` : `Top programs first. Search any of the ${schools.length} FBS schools (${all.length} team-seasons).`} Rating: 50 is the median FBS team of that season; the best are 95–99.</p>
       <div class="tschools">${shown.map(x => `<div class="tsch"><div class="nm"><span class="chip" style="background:${x.team.color}"></span>${esc(x.team.school)}</div><div class="tseas">${x.ss.map(s => `<button class="tsea" data-ts="${s.year}:${s.tid}" aria-label="${s.year} ${esc(x.team.school)}: ${s.w}–${s.l}, ${esc(s.conf)}, rating ${tR(s.r)}"><b>${s.year}</b><span>${s.w}–${s.l} · ${esc(confShort(s.conf))}</span><i>${tR(s.r)}</i></button>`).join('')}</div></div>`).join('')}</div>${list.length > shown.length ? `<p class="note">Showing ${shown.length}. Search for the rest.</p>` : ''}`;
     $('#tlist').querySelectorAll('[data-ts]').forEach(b => b.onclick = () => { const [y, t] = b.dataset.ts.split(':').map(Number); tChoose(all.find(s => s.year === y && s.tid === t)); });
   };
