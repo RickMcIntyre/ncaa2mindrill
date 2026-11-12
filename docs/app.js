@@ -714,8 +714,10 @@ function unlockCodeNote() {
 
 // ---------- game state ----------
 let G = null; // current game
-function newGame(sc0, mode, no) {
-  const sc = { ...sc0, lineup: JSON.parse(JSON.stringify(sc0.lineup)) }; // this game's own copy of the lineup: benching never touches the data
+function newGame(sc0, mode, no, over) {
+  // this game's own copy of the lineup: benching never touches the data. `over` (Tournament) swaps in your team:
+  // its school, season lineup, offense ratings and kicker, in the real drive's score, clock, ball and timeouts
+  const sc = { ...sc0, ...(over || {}), lineup: JSON.parse(JSON.stringify((over || sc0).lineup)) };
   G = {
     mode, no, sc, sc0, subs: [], log: [], grades: [], snaps: [], survKind: mode === 'survival' ? survKind : null,
     st: { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0 },
@@ -1976,9 +1978,11 @@ function survivalHTML() {
 // ---------- tournament: pick a team-season, win a 12-team bracket one clutch drive at a time ----------
 // The field is the player's team plus 11 of the 22 best other programs (each at its best season), drawn per run and
 // seeded by D.ratings (build/add_ratings.py: 0-100, normalized within each season). Each round is one real one-score
-// drive picked to fit: the player's own team-season first, then the same school, then a team rated like it, against a
-// defense rated like the opponent, and tougher every round (less time, worse field position, bigger deficit). Match or
-// beat the real coach's win chance, or score to take the lead, to advance. The other games are simulated from the
+// drive picked to fit: the player's own team-season first, else a team rated like it, against a defense rated like the
+// opponent, and tougher every round (less time, worse field position, bigger deficit). You always play as your team:
+// a round drawn from another team's game puts your team-season's real players (rosters.json, build.py ROSTERS mode)
+// into that game's score, clock, ball and timeouts. Match or beat the real coach's win chance, or score to take the
+// lead, to advance. The other games are simulated from the
 // ratings. Playing takes the unlock (the same one as Cignetti and Saban); picking a team and seeing the seeding are
 // free. Paying never changes which drives a round can draw.
 const TR = [
@@ -1992,6 +1996,18 @@ const TB = { g1: [0, 8, 9], g2: [0, 5, 12], g3: [0, 6, 11], g4: [0, 7, 10], q1: 
 const TB_COLS = [['g1', 'g2', 'g3', 'g4'], ['q1', 'q2', 'q3', 'q4'], ['s1', 's2'], ['f']];
 const TSHARE = 'https://ncaa2mindrill.com/?utm_source=share&utm_campaign=tournament#tournament';
 let tView = 'home', tPending = null, tQuery = '', tPoolMemo = null, tTeamsMemo = null;
+// every rated team-season's season lineup, offense ratings and kicker, fetched the first time a run needs them
+let tRoster = null, tRosterP = null, tRosterTried = false;
+function tRosters() {
+  return tRosterP ||= fetch('rosters.json?v=1').then(r => r.ok ? r.json() : null).catch(() => null)
+    .then(d => { tRoster = d; tRosterTried = true; if (!d) tRosterP = null; return d; });
+}
+const tOwn = (me, sc) => sc.off === me.tid && sc.year === me.year;
+// how your team plays a round: as itself on its own drive, else its season's players dropped into the drive's spot
+function tOver(me, sc) {
+  const r = !tOwn(me, sc) && tRoster && tRoster[me.year + ':' + me.tid];
+  return r ? { off: me.tid, lineup: r.lineup, orat: r.orat, kick: r.kick } : null;
+}
 function tState() { return store.tourney ||= { runs: 0, titles: 0, cur: null, hist: [] }; }
 const tRate = (y, tid) => (D.ratings && D.ratings[y] && D.ratings[y][tid]) || null;
 const tLabel = t => `${t.year} ${T_(t.tid).school}`;
@@ -2044,7 +2060,7 @@ function tPickDrive(run, k) {
   const me = tMe(run), opp = tOpp(run, k), R = TR[TB[k][0]], [lo, hi] = R.band;
   const used = new Set(run.plays.map(p => p.sid)), today = dailyScenario().sc.id;
   const near = (t, r) => Math.exp(-Math.abs((t ? t.r : 50) - r) / 10);
-  const fit = s => (s.off === me.tid ? (s.year === me.year ? 4 : 1.8) : 0.9 * near(tRate(s.year, s.off), me.r))
+  const fit = s => (tOwn(me, s) ? 4 : 0.9 * near(tRate(s.year, s.off), me.r))
     + (s.dfn === opp.tid ? (s.year === opp.year ? 1.5 : 0.8) : 0.7 * near(tRate(s.year, s.dfn), opp.r))
     - 15 * (s.wp0 < lo ? lo - s.wp0 : s.wp0 > hi ? s.wp0 - hi : 0) - 2 * Math.abs(tTough(s) - R.tough)
     - 4 * Math.max(0, R.bar[0] - s.cwp, s.cwp - R.bar[1]); // the coach's finish is the bar: low early, high late (a coach who got nowhere is no bar at all)
@@ -2087,7 +2103,7 @@ function showTourney() {
   $('#subline').textContent = 'Tournament · 12-team bracket';
   if (!D.ratings) { app.innerHTML = '<p class="note" style="text-align:center;margin:20px auto">The tournament needs team ratings, and this data file has none yet.</p>'; return; }
   if (tView === 'preview' && tPending) tPreview();
-  else if (cur && !cur.over && tGame(cur)) tBracket();
+  else if (cur && !cur.over && tGame(cur)) { tRosters(); tBracket(); }
   else if (cur && cur.over && tView !== 'pick') tEnd();
   else tPicker();
 }
@@ -2136,7 +2152,7 @@ function tPreview() {
     ${tBracketHTML(run)}
     ${tCanStart() ? '<button class="cta" id="tStart">Start the tournament</button>' : tLockedHTML()}
     <button class="cta ghost" id="tBack">Pick another team</button>
-    <div class="fine">The field: 11 of the 22 best programs of ${tYears()}, each at its best season, drawn fresh every run and seeded with yours by rating. The rating blends win %, scoring margin and strength of schedule, scaled 0–100 within each season. The other games are simulated from the ratings.${ts.own ? '' : ` ${esc(tLabel(ts))} has no late one-score drive of its own on file, so each round is a real drive from a team rated like it.`}</div>
+    <div class="fine">The field: 11 of the 22 best programs of ${tYears()}, each at its best season, drawn fresh every run and seeded with yours by rating. The rating blends win %, scoring margin and strength of schedule, scaled 0–100 within each season. The other games are simulated from the ratings. You play every round as ${esc(tLabel(ts))}. ${ts.own ? 'Its own drives come first; a round without one that fits' : 'It has no late one-score drive of its own on file, so each round'} puts its real ${ts.year} players into a real late-game spot from a team rated like it.</div>
   </section>`;
   const st = $('#tStart'); if (st) st.onclick = () => tStart(ts, seed, field);
   const ul = $('#tUnlock'); if (ul) ul.onclick = tPaywall;
@@ -2147,7 +2163,7 @@ function tStart(ts, seed, field) {
   const T = tState(), me = field.find(t => t.me);
   T.cur = { seed, day: localDay(), field, win: {}, plays: [], next: null, over: false };
   tSim(T.cur, me.seed <= 4 ? 0 : -1);
-  saveStore(); tPending = null; tView = 'home';
+  saveStore(); tPending = null; tView = 'home'; tRosters();
   track('tourney_start', { team: T_(ts.tid).school, season: ts.year });
   tBracket(); window.scrollTo(0, 0);
 }
@@ -2156,23 +2172,29 @@ function tBracket() {
   const run = tState().cur, me = tMe(run), k = tGame(run), R = TR[TB[k][0]], opp = tOpp(run, k), mine = T_(me.tid), oppT = T_(opp.tid);
   let sc = run.next && run.next.g === k ? D.scen[run.next.sid] : null;
   if (!sc) { sc = tPickDrive(run, k); run.next = { g: k, sid: sc.id }; saveStore(); } // drawn once, so a reload doesn't reroll it
-  const off = T_(sc.off), def = T_(sc.dfn), gl = gameLabel(sc);
-  const ctx = sc.off === me.tid && sc.year === me.year ? `A real ${tLabel(me)} drive.`
-    : sc.off === me.tid ? `No ${tLabel(me)} drive fits this round, so here is one of ${mine.school}'s own from ${sc.year}.`
-    : `No ${tLabel(me)} drive fits this round, so you take over a real drive from a team rated like yours, ${sc.dfn === opp.tid ? `against ${oppT.school} itself` : `against a defense rated like ${oppT.school}'s`}.`;
+  if (!tOwn(me, sc) && !tRoster && !tRosterTried) { // your players are still on the way
+    app.innerHTML = '<p class="note" id="tWait" style="text-align:center;margin:20px auto">Loading your roster…</p>';
+    tRosters().then(() => { if ($('#tWait')) tBracket(); }); return;
+  }
+  const over = tOver(me, sc), shown = over ? { ...sc, ...over } : sc, real = T_(sc.off);
+  const off = T_(shown.off), def = T_(sc.dfn), gl = gameLabel(sc);
+  const vsD = sc.dfn === opp.tid ? `against ${oppT.school} itself` : `against a defense rated like ${oppT.school}'s`;
+  const ctx = tOwn(me, sc) ? `A real ${tLabel(me)} drive.`
+    : over ? `No ${tLabel(me)} drive fits this round, so your ${me.year} ${mine.school} players take over a real spot from ${sc.year} ${real.school}, ${vsD}.`
+    : `No ${tLabel(me)} drive fits this round, so you take over a real drive from a team rated like yours, ${vsD}.`;
   $('#subline').textContent = `Tournament · ${R.name}`;
   app.innerHTML = `<section class="intro tround">
     <div class="eyebrow">Tournament · ${esc(R.name)}</div>
     <div class="tmatch"><span class="tm me"><span class="chip" style="background:${mine.color}"></span>(${me.seed}) ${esc(tLabel(me))}</span><span class="v">vs</span><span class="tm"><span class="chip" style="background:${oppT.color}"></span>(${opp.seed}) ${esc(tLabel(opp))}</span></div>
-    <div class="eyebrow" style="color:var(--chalk)">${esc(gl.title)} · ${esc(gl.when)}</div>
+    <div class="eyebrow" style="color:var(--chalk)">${over ? 'The spot: ' : ''}${esc(gl.title)} · ${esc(gl.when)}</div>
     <h2 class="headline">${headline(sc)}<small>${clock(sc.secs)} left in the game</small></h2>
-    ${bug({ s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, to: sc.to, dto: sc.dto }, sc)}
-    <div class="pitch">${esc(ctx)} Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, sc))}, calling it for <b>${esc(off.school)}</b>.<br>To advance: match <b>${esc(sc.coach)}'s ${pct(sc.cwp)}</b> win chance, or score to take the lead.</div>
+    ${bug({ s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, to: sc.to, dto: sc.dto }, shown)}
+    <div class="pitch">${esc(ctx)} Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, shown))}, calling it for <b>${esc(off.school)}</b>.<br>To advance: match <b>${esc(sc.coach)}'s ${pct(sc.cwp)}</b> win chance${over ? ` (the real call, for ${esc(real.school)})` : ''}, or score to take the lead.</div>
     <button class="cta" id="tGo">Kick off the ${esc(R.name)}</button>
-    <div class="fine">Real score, clock, ball, timeouts and skill players from that game. ${esc(def.school)} coached by ${esc(sc.dcoach)}.</div>
+    <div class="fine">${over ? `Real score, clock, ball and timeouts from that game. Your quarterback, backs and receivers are ${esc(tLabel(me))}'s, with their ${me.year} numbers.` : 'Real score, clock, ball, timeouts and skill players from that game.'} ${esc(def.school)} coached by ${esc(sc.dcoach)}.</div>
   </section>
   <section class="final tbr"><div class="h">The bracket</div>${tBracketHTML(run)}</section>`;
-  $('#tGo').onclick = () => { if (!premiumUnlocked()) { tPaywall(); return; } track('drive_start', { mode: 'tourney' }); newGame(sc, 'tourney', TB[k][0] + 1); renderPlay(); };
+  $('#tGo').onclick = () => { if (!premiumUnlocked()) { tPaywall(); return; } track('drive_start', { mode: 'tourney' }); newGame(sc, 'tourney', TB[k][0] + 1, over); renderPlay(); };
 }
 function tBracketHTML(run) {
   const me = tMe(run).seed, now = run.over ? null : tGame(run);
