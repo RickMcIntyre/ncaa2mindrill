@@ -398,6 +398,83 @@ dialog ol { padding-left: 20px; display: grid; gap: 8px; }
 .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--chalk); color: var(--night); padding: 8px 16px; border-radius: 8px; font-weight: 600; }
 footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; text-align: center; display: grid; gap: 4px; }
 footer a { color: inherit; text-underline-offset: 2px; }
+
+/* ---------- the cleanup: one-line header, tabs that fit a phone, a home screen, a calmer play screen ---------- */
+header.top { grid-template-columns: 92px 1fr 92px; padding-block: 10px 8px; }
+.iconrow.l { justify-content: flex-start; }
+.brand h1 { font-family: var(--f-ui); font-weight: 800; text-transform: uppercase; letter-spacing: .02em; font-size: clamp(20px, 5.6vw, 34px); white-space: nowrap; }
+.brand .sub { margin-top: 2px; }
+nav.tabs { flex-wrap: wrap; padding-block: 10px; }
+nav.tabs .br { display: none; }
+nav.tabs .lvl.new { background: var(--amber); color: #1b1203; }
+@media (max-width: 600px) {
+  .iconbtn { width: 36px; height: 36px; font-size: 16px; }
+  header.top { grid-template-columns: 80px 1fr 80px; }
+  nav.tabs { justify-content: center; overflow: visible; margin-inline: 0; padding-inline: 0; gap: 6px; }
+  nav.tabs .br { display: block; flex-basis: 100%; height: 0; }
+  nav.tabs button { font-size: 13px; padding: 6px 11px; }
+  :root.locked nav.tabs .mode-tab .lk { display: none; }   /* the lock shows on the Home cards and the locked screen */
+}
+
+/* home */
+.home { max-width: 600px; margin: 8px auto 0; display: grid; gap: 14px; }
+.hero { position: relative; border-radius: 16px; padding: 18px 18px 16px; display: grid; gap: 6px; border: 1px solid rgba(255, 255, 255, .08);
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .035) 0 34px, transparent 34px 68px), linear-gradient(180deg, #2f6b3a, #23552c); }
+.hero .eb { font-family: var(--f-ui); font-weight: 700; letter-spacing: .16em; text-transform: uppercase; font-size: 13px; color: rgba(238, 242, 246, .78); }
+.hero .eb b { color: var(--amber); font-weight: 700; }
+.hero .hl { font-family: var(--f-ui); font-weight: 800; text-transform: uppercase; font-size: clamp(50px, 14vw, 76px); line-height: .9; margin: 4px 0 0; }
+.hero .hs { font-family: var(--f-ui); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: clamp(20px, 5.4vw, 26px); color: rgba(238, 242, 246, .82); line-height: 1; }
+.hero .ln { font-size: 16px; }
+.hero .done { font-size: 15px; color: var(--chalk); }
+.hero .done b { color: var(--amber); }
+.hero .go { margin-top: 8px; width: 100%; border: 0; border-radius: 10px; padding: 14px; background: var(--chalk); color: #10161f; font-family: var(--f-ui); font-weight: 800; letter-spacing: .14em; text-transform: uppercase; font-size: 20px; }
+.hero .go:hover { filter: brightness(.96); }
+.mcards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.mcard { text-align: left; background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--mc, var(--line)); border-radius: 12px; padding: 12px 14px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+.mcard:hover { border-color: var(--mc, var(--muted)); }
+.mcard .k { font-family: var(--f-ui); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.mcard .k .lk { width: 10px; height: 12px; display: none; }
+:root.locked .mcard.paid .k .lk { display: block; }
+.mcard .v { font-family: var(--f-ui); font-weight: 800; font-size: 24px; line-height: 1.05; text-transform: uppercase; }
+.mcard .s { font-size: 13px; color: var(--muted); }
+.mcard .p { justify-self: start; margin-top: 6px; font-family: var(--f-ui); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; font-size: 13px; padding: 5px 14px; border-radius: 999px; background: var(--chalk); color: #10161f; }
+.hlist { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.hlist button { display: grid; grid-template-columns: 26px minmax(0, 1fr) 12px; align-items: center; gap: 10px; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 12px 14px; }
+.hlist button:last-child { border-bottom: 0; }
+.hlist button:hover { background: var(--panel-2); }
+.hlist .i { font-size: 20px; text-align: center; }
+.hlist b { font-weight: 600; font-size: 16px; display: block; }
+.hlist small { color: var(--muted); font-size: 13.5px; }
+.hlist .chev { color: var(--muted); }
+.htiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.htiles button { background: transparent; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 4px; justify-items: center; font-weight: 600; }
+.htiles button:hover { border-color: var(--muted); }
+.htiles .i { font-family: var(--f-ui); font-weight: 800; font-size: 18px; }
+.flinks { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; font-size: 13.5px; margin-bottom: 6px; }
+
+/* play screen: the scoreboard stays put, the call sheet is three big buttons and a short row of the rest */
+.bigcalls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.bigcall { background: var(--chalk); color: #10161f; border: 0; border-radius: 10px; padding: 16px 6px 12px; display: grid; gap: 2px; justify-items: center; min-width: 0; }
+.bigcall b { font-family: var(--f-ui); font-weight: 800; font-size: 26px; letter-spacing: .04em; text-transform: uppercase; line-height: 1; }
+.bigcall small { font-size: 12px; color: #4a5566; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.bigcall:hover:not(:disabled) { filter: brightness(.94); }
+.bigcall:disabled { opacity: .35; cursor: not-allowed; }
+.calls.small .call b { font-size: 16px; }
+details.lineupbox > summary, details.fold > summary { cursor: pointer; list-style: none; font-family: var(--f-ui); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; font-size: 14px; color: var(--muted); display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+details.lineupbox > summary::-webkit-details-marker, details.fold > summary::-webkit-details-marker { display: none; }
+details.lineupbox > summary::after, details.fold > summary::after { content: '+'; font-size: 18px; line-height: 1; }
+details.lineupbox[open] > summary::after, details.fold[open] > summary::after { content: '–'; }
+details.lineupbox > summary span { font-weight: 600; letter-spacing: .04em; text-transform: none; font-family: var(--f-body); font-size: 12.5px; margin-right: auto; }
+details.lineupbox .lineup { margin-top: 8px; }
+details.fold { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+details.fold > summary { padding: 12px 14px; color: var(--chalk); }
+details.fold > .realdrive { border: 0; background: transparent; padding-top: 0; }
+@media (max-width: 860px) {
+  .game { align-items: stretch; }
+  .game .bug { position: sticky; top: 0; z-index: 7; box-shadow: 0 0 0 10px var(--night); }
+  .game.picking .fieldbox { top: 66px; }
+  .game .lineupbox { order: 5; margin-top: 4px; }
+}
 .ball { transition: transform .9s cubic-bezier(.3,.7,.3,1); }
 @media (prefers-reduced-motion: reduce) { .ball { transition: none; } }
 </style>
@@ -406,27 +483,27 @@ footer a { color: inherit; text-underline-offset: 2px; }
 
 <div class="wrap">
   <header class="top">
-    <button class="iconbtn" id="helpBtn" aria-label="How to play">?</button>
+    <div class="iconrow l"><button class="iconbtn" id="helpBtn" aria-label="How to play">?</button><button class="iconbtn" id="statsBtn" aria-label="Your stats">▮▮</button></div>
     <div class="brand">
       <h1>Two-Minute <span>Drill</span></h1>
       <div class="sub" id="subline">College football · FBS 2023–2025</div>
     </div>
-    <div class="iconrow"><button class="iconbtn" id="soundBtn" aria-label="Sound on or off" aria-pressed="false">🔇</button><button class="iconbtn" id="statsBtn" aria-label="Your stats">▮▮</button></div>
+    <div class="iconrow"><button class="iconbtn" id="soundBtn" aria-label="Sound on or off" aria-pressed="false">🔇</button></div>
   </header>
   <nav class="tabs" aria-label="Mode">
-    <button id="tabDaily" aria-pressed="true">Daily</button>
+    <button id="tabHome" aria-pressed="true">Home</button>
+    <button id="tabDaily" aria-pressed="false">Daily</button>
+    <button id="tabTourney" aria-pressed="false" class="tour-tab mode-tab" aria-label="Tournament"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Tournament<span class="lvl new">New</span></button>
+    <span class="br" aria-hidden="true"></span>
+    <button id="tabSurvival" aria-pressed="false">Survival</button>
     <button id="tabCignetti" aria-pressed="false" class="cig-tab mode-tab" aria-label="Cignetti mode, hard"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Cignetti<span class="lvl">Hard</span></button>
     <button id="tabSaban" aria-pressed="false" class="saban-tab mode-tab" aria-label="Saban mode, hardest"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Saban<span class="lvl">Hardest</span></button>
-    <button id="tabSurvival" aria-pressed="false">Survival</button>
-    <button id="tabTourney" aria-pressed="false" class="tour-tab mode-tab" aria-label="Tournament"><svg class="lk" viewBox="0 0 12 14" aria-hidden="true"><path d="M3 6.5V4.5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="1" y="6.2" width="10" height="7.4" rx="1.6" fill="currentColor"/></svg>Tournament</button>
-    <button id="tabCoaches" aria-pressed="false">Coaches</button>
   </nav>
   <div id="subnav" class="subnav" hidden></div>
   <main id="app"><p class="note" style="text-align:center">Loading three seasons of FBS drives, most of which did not go well…</p></main>
   <footer>
-    <div>Every snap is drawn from a real 2023–2025 FBS play. Head coaches as of the game played.</div>
-    <div>Fan-made. Not affiliated with or endorsed by the NCAA, its conferences or its schools. Data: cfbfastR / SportsDataverse.</div>
-    <div><a href="/privacy.html">Privacy</a></div>
+    <nav class="flinks" aria-label="More"><a href="#" id="fHelp">How to play</a><a href="#" id="fLibrary">Drive library</a><a href="#" id="fCoaches">Coaches</a><a href="/privacy.html">Privacy</a></nav>
+    <div>Every snap is drawn from a real 2023–2025 FBS play; head coaches as of the game played. Fan-made, not affiliated with or endorsed by the NCAA, its conferences or its schools. Data: cfbfastR / SportsDataverse.</div>
   </footer>
 </div>
 
@@ -479,7 +556,7 @@ window.ADS = { gtag: '', meta: '1054087884349992', x: '', xEvents: { purchase: '
 <script src="native.js?v=2"></script>
 <script src="sound.js?v=6"></script>
 <script src="anim.js?v=11"></script>
-<script src="app.js?v=48"></script>
+<script src="app.js?v=49"></script>
 
 </body>
 </html>
