@@ -210,11 +210,14 @@ JERSEY = {}
 # filled with real tight ends even when only one of them ever caught a pass
 ESPN_POS = {'1': 'WR', '7': 'TE', '8': 'QB', '9': 'RB'}
 RGAME = {}
+RSEASON = {}  # (year, team) -> Counter of (name, position) over the games they dressed for
+from collections import Counter
 for y in YEARS:
     ro = pd.read_parquet(RAW + f'rost_{y}.parquet', columns=['team_id', 'full_name', 'jersey', 'position_href', 'game_id', 'did_not_play'])
     ro['pos'] = ro.position_href.str.extract(r'positions/(\d+)')[0].map(ESPN_POS)
     for r in ro[ro.pos.notna() & (ro.did_not_play != True)].itertuples(index=False):
         RGAME.setdefault((int(r.game_id), int(r.team_id)), []).append((r.full_name, r.pos))
+        RSEASON.setdefault((y, int(r.team_id)), Counter())[(r.full_name, r.pos)] += 1
     ro = ro[['team_id', 'full_name', 'jersey']].dropna().drop_duplicates(['team_id', 'full_name'], keep='last')
     for r in ro.itertuples(index=False):
         JERSEY[(y, int(r.team_id), r.full_name)] = str(r.jersey)
@@ -295,15 +298,17 @@ def valid_name(n_):
 
 
 def lineup(year, tid, gid):
-    """Players who touched the ball for this team in this game, with their season numbers."""
-    gp = p[(p.game_id == gid) & (p.pos_team.map(team_name_to_id) == tid)]
+    """Players who touched the ball for this team in this game, with their season numbers.
+    gid=None: the season lineup, its passer, backs and receivers by volume (Tournament rounds played in another team's spot)."""
+    gp = p[(p.game_id == gid) & (p.pos_team.map(team_name_to_id) == tid)] if gid is not None else p.iloc[0:0]
+    game_roster = RGAME.get((int(gid), int(tid)), []) if gid is not None else [k for k, _ in RSEASON.get((year, tid), Counter()).most_common()]
     out = {}
     q = qbs.loc[(year, tid)] if (year, tid) in QB_IDX else None
     if q is not None:
         q = q[q.index.map(valid_name)]
     gq = gp.passer_player_name.value_counts()
     gq = gq[gq.index.map(valid_name)]
-    qname = gq.index[0] if len(gq) else (q.n.idxmax() if q is not None else 'QB')
+    qname = gq.index[0] if len(gq) else (q.n.idxmax() if q is not None and len(q) else 'QB')
     lq = sc[sc.kind == 'pass'].EPA.mean()
 
     def qb_dict(name):
@@ -322,7 +327,7 @@ def lineup(year, tid, gid):
     if not others and q is not None:
         others = [n_ for n_ in q.sort_values('n', ascending=False).index if good_qb(n_)]
     if not others:
-        others = [n_ for n_, rp in RGAME.get((int(gid), int(tid)), []) if rp == 'QB' and nkey(n_) != nkey(qname)]
+        others = [n_ for n_, rp in game_roster if rp == 'QB' and nkey(n_) != nkey(qname)]
     out['qb2'] = qb_dict(others[0]) if others else None
     recs = rec.loc[(year, tid)] if (year, tid) in REC_IDX else pd.DataFrame()
     if len(recs):
@@ -351,7 +356,7 @@ def lineup(year, tid, gid):
     have = {x['name'] for x in picks}
     for pos, k in (('WR', 5), ('TE', 3), ('RB', 3)):
         short_by = k - sum(1 for x in picks if x['pos'] == pos)
-        for name, rp in RGAME.get((int(gid), int(tid)), []):
+        for name, rp in game_roster:
             if short_by <= 0:
                 break
             if rp != pos or name in have:
@@ -597,6 +602,25 @@ fgk['tid'] = fgk.pos_team.map(team_name_to_id)
 kres = fgk.groupby(['year', 'tid']).apply(lambda d: pd.Series({'res': (d.made - d.pred).mean(), 'n': len(d)}))
 KICK = {k: round(float(v.res * v.n / (v.n + 12)), 3) for k, v in kres.iterrows()}
 print('kickers', len(KICK), 'best', sorted(KICK.values())[-3:], 'worst', sorted(KICK.values())[:3])
+
+# Rosters mode (ROSTERS=1): for every team-season in D.ratings, its season lineup (the passer, backs and receivers
+# by volume, with their season numbers), its ratings (orat: the same dict a drive carries as orat or drat), its kicker,
+# its defenders and its head coach, so a Tournament round can put your team and your bracket opponent on the field. Writes docs/rosters.json beside this checkout's data.json
+# (or ROSTERS_OUT) and stops here: data.json is only read.
+if os.environ.get('ROSTERS'):
+    R_OUT = (os.environ.get('ROSTERS_OUT') or OUT.replace('data.json', 'rosters.json')).replace(os.sep, '/')
+    assert not R_OUT.endswith('data.json'), 'rosters mode never writes data.json'
+    ros = {}
+    for y_, ts_ in sorted((LIVE.get('ratings') or {}).items()):
+        if int(y_) not in YEARS:
+            continue
+        for t_ in sorted(ts_, key=int):
+            yy, tt = int(y_), int(t_)
+            ros[f'{yy}:{tt}'] = dict(lineup=lineup(yy, tt, None), orat=rating(yy, tt), kick=KICK.get((yy, tt), 0.0),
+                                     dlineup=defense_lineup(yy, tt), coach=coach.get((yy, tt), ''))
+    json.dump(ros, open(R_OUT, 'w', encoding='utf-8'), separators=(',', ':'), ensure_ascii=False)
+    print('wrote rosters', R_OUT, len(ros), 'team-seasons')
+    sys.exit(0)
 
 
 # ---------- win probability model ----------
