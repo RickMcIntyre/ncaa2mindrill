@@ -604,8 +604,8 @@ KICK = {k: round(float(v.res * v.n / (v.n + 12)), 3) for k, v in kres.iterrows()
 print('kickers', len(KICK), 'best', sorted(KICK.values())[-3:], 'worst', sorted(KICK.values())[:3])
 
 # Rosters mode (ROSTERS=1): for every team-season in D.ratings, its season lineup (the passer, backs and receivers
-# by volume, with their season numbers), its offense ratings and its kicker, so a Tournament round drawn from another
-# team's game can put your own team's players on the field. Writes docs/rosters.json beside this checkout's data.json
+# by volume, with their season numbers), its ratings (orat: the same dict a drive carries as orat or drat), its kicker,
+# its defenders and its head coach, so a Tournament round can put your team and your bracket opponent on the field. Writes docs/rosters.json beside this checkout's data.json
 # (or ROSTERS_OUT) and stops here: data.json is only read.
 if os.environ.get('ROSTERS'):
     R_OUT = (os.environ.get('ROSTERS_OUT') or OUT.replace('data.json', 'rosters.json')).replace(os.sep, '/')
@@ -616,7 +616,8 @@ if os.environ.get('ROSTERS'):
             continue
         for t_ in sorted(ts_, key=int):
             yy, tt = int(y_), int(t_)
-            ros[f'{yy}:{tt}'] = dict(lineup=lineup(yy, tt, None), orat=rating(yy, tt), kick=KICK.get((yy, tt), 0.0))
+            ros[f'{yy}:{tt}'] = dict(lineup=lineup(yy, tt, None), orat=rating(yy, tt), kick=KICK.get((yy, tt), 0.0),
+                                     dlineup=defense_lineup(yy, tt), coach=coach.get((yy, tt), ''))
     json.dump(ros, open(R_OUT, 'w', encoding='utf-8'), separators=(',', ':'), ensure_ascii=False)
     print('wrote rosters', R_OUT, len(ros), 'team-seasons')
     sys.exit(0)

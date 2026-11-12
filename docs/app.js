@@ -507,6 +507,7 @@ const ord = d => ['', '1st', '2nd', '3rd', '4th'][d] || `${d}th`;
 function spot(ytg, sc) { if (ytg === 50) return 'midfield'; return ytg > 50 ? `${T_(sc.off).abbr} ${100 - ytg}` : `${T_(sc.dfn).abbr} ${ytg}`; }
 function downText(st) { return st.twoPt ? 'Two-point try' : `${ord(st.down)} & ${st.dist >= st.ytg ? 'goal' : st.dist}`; }
 function gameLabel(sc) {
+  if (sc.label) return sc.label; // a Tournament matchup played in another game's spot
   const g = D.games[sc.g];
   const h = T_(g[3]), a = T_(g[4]);
   const when = sc.post ? 'Bowl / Playoff' : `Week ${sc.week}`;
@@ -715,9 +716,10 @@ function unlockCodeNote() {
 // ---------- game state ----------
 let G = null; // current game
 function newGame(sc0, mode, no, over) {
-  // this game's own copy of the lineup: benching never touches the data. `over` (Tournament) swaps in your team:
-  // its school, season lineup, offense ratings and kicker, in the real drive's score, clock, ball and timeouts
-  const sc = { ...sc0, ...(over || {}), lineup: JSON.parse(JSON.stringify((over || sc0).lineup)) };
+  // this game's own copy of the lineup: benching never touches the data. `over` (Tournament) swaps in your team
+  // (school, season lineup, offense ratings, kicker) and your bracket opponent's defense (school, defenders, ratings,
+  // coach), in the real drive's score, clock, ball and timeouts
+  const sc = { ...sc0, ...(over || {}), lineup: JSON.parse(JSON.stringify((over && over.lineup) || sc0.lineup)) };
   G = {
     mode, no, sc, sc0, subs: [], log: [], grades: [], snaps: [], survKind: mode === 'survival' ? survKind : null,
     st: { sc, s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, ytg: sc.ytg, down: sc.down, dist: sc.dist, to: sc.to, dto: sc.dto, elo: sc.elo, pending: 0, snaps: 0 },
@@ -1979,10 +1981,10 @@ function survivalHTML() {
 // The field is the player's team plus 11 of the 22 best other programs (each at its best season), drawn per run and
 // seeded by D.ratings (build/add_ratings.py: 0-100, normalized within each season). Each round is one real one-score
 // drive picked to fit: the player's own team-season first, else a team rated like it, against a defense rated like the
-// opponent, and tougher every round (less time, worse field position, bigger deficit). You always play as your team:
-// a round drawn from another team's game puts your team-season's real players (rosters.json, build.py ROSTERS mode)
-// into that game's score, clock, ball and timeouts. Match or beat the real coach's win chance, or score to take the
-// lead, to advance. The other games are simulated from the
+// opponent, and tougher every round (less time, worse field position, bigger deficit). You always play as your team
+// against your bracket opponent: rosters.json (build.py ROSTERS mode) puts your team-season's real players and the
+// opponent's real defense into the drive's score, clock, ball and timeouts. Match or beat the real coach's win chance,
+// or score to take the lead, to advance. The other games are simulated from the
 // ratings. Playing takes the unlock (the same one as Cignetti and Saban); picking a team and seeing the seeding are
 // free. Paying never changes which drives a round can draw.
 const TR = [
@@ -1999,14 +2001,22 @@ let tView = 'home', tPending = null, tQuery = '', tPoolMemo = null, tTeamsMemo =
 // every rated team-season's season lineup, offense ratings and kicker, fetched the first time a run needs them
 let tRoster = null, tRosterP = null, tRosterTried = false;
 function tRosters() {
-  return tRosterP ||= fetch('rosters.json?v=1').then(r => r.ok ? r.json() : null).catch(() => null)
+  return tRosterP ||= fetch('rosters.json?v=2').then(r => r.ok ? r.json() : null).catch(() => null)
     .then(d => { tRoster = d; tRosterTried = true; if (!d) tRosterP = null; return d; });
 }
 const tOwn = (me, sc) => sc.off === me.tid && sc.year === me.year;
-// how your team plays a round: as itself on its own drive, else its season's players dropped into the drive's spot
-function tOver(me, sc) {
-  const r = !tOwn(me, sc) && tRoster && tRoster[me.year + ':' + me.tid];
-  return r ? { off: me.tid, lineup: r.lineup, orat: r.orat, kick: r.kick } : null;
+const tOppOn = (opp, sc) => sc.dfn === opp.tid && sc.year === opp.year;
+// a round is always your team against your bracket opponent: on its own drive your team plays as itself, else its
+// season's players take over the drive's spot; the defense is the opponent's unless the drive was already against it
+function tOver(me, sc, opp, rd) {
+  if (!tRoster) return null;
+  const mine = !tOwn(me, sc) && tRoster[me.year + ':' + me.tid], theirs = !tOppOn(opp, sc) && tRoster[opp.year + ':' + opp.tid];
+  if (!mine && !theirs) return null;
+  // the first round is played at the higher seed's stadium, the rest on neutral fields
+  const o = { label: { title: `${T_(me.tid).school} vs ${T_(opp.tid).school}`, when: `Tournament · ${TR[rd].name}` }, home: rd === 0 && me.seed < opp.seed, neutral: rd > 0 };
+  if (mine) Object.assign(o, { off: me.tid, lineup: mine.lineup, orat: mine.orat, kick: mine.kick });
+  if (theirs) Object.assign(o, { dfn: opp.tid, dlineup: theirs.dlineup || [], drat: theirs.orat, dcoach: theirs.coach || '' }); // orat is the team's whole rating
+  return o;
 }
 function tState() { return store.tourney ||= { runs: 0, titles: 0, cur: null, hist: [] }; }
 const tRate = (y, tid) => (D.ratings && D.ratings[y] && D.ratings[y][tid]) || null;
@@ -2152,7 +2162,7 @@ function tPreview() {
     ${tBracketHTML(run)}
     ${tCanStart() ? '<button class="cta" id="tStart">Start the tournament</button>' : tLockedHTML()}
     <button class="cta ghost" id="tBack">Pick another team</button>
-    <div class="fine">The field: 11 of the 22 best programs of ${tYears()}, each at its best season, drawn fresh every run and seeded with yours by rating. The rating blends win %, scoring margin and strength of schedule, scaled 0–100 within each season. The other games are simulated from the ratings. You play every round as ${esc(tLabel(ts))}. ${ts.own ? 'Its own drives come first; a round without one that fits' : 'It has no late one-score drive of its own on file, so each round'} puts its real ${ts.year} players into a real late-game spot from a team rated like it.</div>
+    <div class="fine">The field: 11 of the 22 best programs of ${tYears()}, each at its best season, drawn fresh every run and seeded with yours by rating. The rating blends win %, scoring margin and strength of schedule, scaled 0–100 within each season. The other games are simulated from the ratings. You play every round as ${esc(tLabel(ts))}, with its ${ts.year} players, against your bracket opponent's defense. Each round is a real late-game spot, ${ts.own ? 'its own when one fits, else one from a team rated like it' : 'from a team rated like it (it has no late one-score drive of its own on file)'}.</div>
   </section>`;
   const st = $('#tStart'); if (st) st.onclick = () => tStart(ts, seed, field);
   const ul = $('#tUnlock'); if (ul) ul.onclick = tPaywall;
@@ -2172,16 +2182,17 @@ function tBracket() {
   const run = tState().cur, me = tMe(run), k = tGame(run), R = TR[TB[k][0]], opp = tOpp(run, k), mine = T_(me.tid), oppT = T_(opp.tid);
   let sc = run.next && run.next.g === k ? D.scen[run.next.sid] : null;
   if (!sc) { sc = tPickDrive(run, k); run.next = { g: k, sid: sc.id }; saveStore(); } // drawn once, so a reload doesn't reroll it
-  if (!tOwn(me, sc) && !tRoster && !tRosterTried) { // your players are still on the way
-    app.innerHTML = '<p class="note" id="tWait" style="text-align:center;margin:20px auto">Loading your roster…</p>';
+  if (!(tOwn(me, sc) && tOppOn(opp, sc)) && !tRoster && !tRosterTried) { // the rosters are still on the way
+    app.innerHTML = '<p class="note" id="tWait" style="text-align:center;margin:20px auto">Loading the rosters…</p>';
     tRosters().then(() => { if ($('#tWait')) tBracket(); }); return;
   }
-  const over = tOver(me, sc), shown = over ? { ...sc, ...over } : sc, real = T_(sc.off);
-  const off = T_(shown.off), def = T_(sc.dfn), gl = gameLabel(sc);
-  const vsD = sc.dfn === opp.tid ? `against ${oppT.school} itself` : `against a defense rated like ${oppT.school}'s`;
-  const ctx = tOwn(me, sc) ? `A real ${tLabel(me)} drive.`
-    : over ? `No ${tLabel(me)} drive fits this round, so your ${me.year} ${mine.school} players take over a real spot from ${sc.year} ${real.school}, ${vsD}.`
-    : `No ${tLabel(me)} drive fits this round, so you take over a real drive from a team rated like yours, ${vsD}.`;
+  const rd = TB[k][0], over = tOver(me, sc, opp, rd), shown = over ? { ...sc, ...over } : sc, real = T_(sc.off), realDef = T_(sc.dfn);
+  const off = T_(shown.off), def = T_(shown.dfn), gl = gameLabel(sc), meOn = !!(tOwn(me, sc) || (over && over.off != null)), oppSwap = !!(over && over.dfn != null);
+  const ctx = !meOn ? `No ${tLabel(me)} drive fits this round, so you take over a real drive from a team rated like yours, against a defense rated like ${oppT.school}'s.`
+    : tOwn(me, sc) ? `A real ${tLabel(me)} spot, from its game against ${realDef.school}${oppSwap ? `, with ${tLabel(opp)}'s defense on the field` : ''}.`
+    : `Your ${tLabel(me)} players in a real late-game spot from ${sc.year} ${real.school} vs ${realDef.school}${oppSwap ? `, against ${tLabel(opp)}'s defense` : ''}.`;
+  const fine = !over ? 'Real score, clock, ball, timeouts and skill players from that game.'
+    : `Real score, clock, ball and timeouts from that game. ${tOwn(me, sc) ? 'Your players are from that game.' : `Your quarterback, backs and receivers are ${esc(tLabel(me))}'s, with their ${me.year} numbers.`}${oppSwap ? ` The defense is ${esc(tLabel(opp))}'s, with its ${opp.year} numbers.` : ''}`;
   $('#subline').textContent = `Tournament · ${R.name}`;
   app.innerHTML = `<section class="intro tround">
     <div class="eyebrow">Tournament · ${esc(R.name)}</div>
@@ -2189,9 +2200,9 @@ function tBracket() {
     <div class="eyebrow" style="color:var(--chalk)">${over ? 'The spot: ' : ''}${esc(gl.title)} · ${esc(gl.when)}</div>
     <h2 class="headline">${headline(sc)}<small>${clock(sc.secs)} left in the game</small></h2>
     ${bug({ s: sc.os - sc.ds, os: sc.os, ds: sc.ds, T: sc.secs, to: sc.to, dto: sc.dto }, shown)}
-    <div class="pitch">${esc(ctx)} Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, shown))}, calling it for <b>${esc(off.school)}</b>.<br>To advance: match <b>${esc(sc.coach)}'s ${pct(sc.cwp)}</b> win chance${over ? ` (the real call, for ${esc(real.school)})` : ''}, or score to take the lead.</div>
+    <div class="pitch">${esc(ctx)} Your ball, ${downText(sc)} at the ${esc(spot(sc.ytg, shown))}, calling it for <b>${esc(off.school)}</b> against <b>${esc(def.school)}</b>.<br>To advance: match <b>${esc(sc.coach)}'s ${pct(sc.cwp)}</b> win chance${meOn && !tOwn(me, sc) ? ` (the real call, for ${esc(real.school)})` : ''}, or score to take the lead.</div>
     <button class="cta" id="tGo">Kick off the ${esc(R.name)}</button>
-    <div class="fine">${over ? `Real score, clock, ball and timeouts from that game. Your quarterback, backs and receivers are ${esc(tLabel(me))}'s, with their ${me.year} numbers.` : 'Real score, clock, ball, timeouts and skill players from that game.'} ${esc(def.school)} coached by ${esc(sc.dcoach)}.</div>
+    <div class="fine">${fine}${shown.dcoach ? ` ${esc(def.school)} coached by ${esc(shown.dcoach)}.` : ''}</div>
   </section>
   <section class="final tbr"><div class="h">The bracket</div>${tBracketHTML(run)}</section>`;
   $('#tGo').onclick = () => { if (!premiumUnlocked()) { tPaywall(); return; } track('drive_start', { mode: 'tourney' }); newGame(sc, 'tourney', TB[k][0] + 1, over); renderPlay(); };
@@ -2214,7 +2225,7 @@ function tPathHTML(run) {
   const rows = tMe(run).seed <= 4 ? ['<div class="tpath bye"><b>First Round · bye</b><span>A top-four seed</span></div>'] : [];
   for (const p of run.plays) {
     const o = run.field[p.opp - 1], sc = D.scen[p.sid];
-    rows.push(`<div class="tpath ${p.won ? 'w' : 'l'}"><b>${p.won ? '✅' : '❌'} ${esc(TR[p.rd].name)} · ${p.won ? 'beat' : 'lost to'} (${o.seed}) ${esc(tLabel(o))}</b><span>You ${pct(p.wp)} · ${esc(sc.coach)} ${pct(p.cwp)}${p.how === 'score' ? ' · scored to take the lead' : ''} · ${esc(gameLabel(sc).title)}, ${sc.year}</span></div>`);
+    rows.push(`<div class="tpath ${p.won ? 'w' : 'l'}"><b>${p.won ? '✅' : '❌'} ${esc(TR[p.rd].name)} · ${p.won ? 'beat' : 'lost to'} (${o.seed}) ${esc(tLabel(o))}</b><span>You ${pct(p.wp)} · ${esc(sc.coach)} ${pct(p.cwp)}${p.how === 'score' ? ' · scored to take the lead' : ''} · spot: ${esc(gameLabel(sc).title)}, ${sc.year}</span></div>`);
   }
   return rows.join('');
 }
