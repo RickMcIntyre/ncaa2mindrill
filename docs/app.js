@@ -634,6 +634,9 @@ function beacon(path, params) {
   if (UNLOCK_API.includes('REPLACE_ME')) return;
   try { const u = new URL(path, UNLOCK_API); for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v); fetch(u, { keepalive: true, mode: 'cors', cache: 'no-store' }).catch(() => {}); } catch { /* ignore */ }
 }
+// a Tournament step for the stats page (worker /t): opened, picked a team, unlock screen, checkout, paid, run started,
+// rounds played and won. The per-browser token only stops one browser counting twice a day.
+const tb = (ev, extra = {}) => beacon('/t', { ev, token: playerToken(), ...extra });
 async function unlockApi(path, params) {
   const u = new URL(path, UNLOCK_API); for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
   const r = await fetch(u, { cache: 'no-store' });
@@ -685,8 +688,8 @@ function renderPaywall(mode, back = mode) { // back: the tab to land on once unl
          <details class="restore"><summary>I already paid, or I have a gift code</summary><div class="fine">Paste the unlock code from your first device, the receipt email Stripe sent you, or a friend's GIFT code.</div><div class="row"><input id="codeIn" class="codein" placeholder="Unlock code, receipt email, or GIFT-…" autocomplete="off"><button class="cta ghost" id="codeBtn">Unlock</button></div><div class="fine" id="buyNote"></div></details>
          <div class="fine">Card payments by Stripe. One payment unlocks Cignetti mode, Saban mode and the Tournament, forever. Paying never makes a drive easier. It's also in the <a href="https://ncaa2mindrill.com/app">app</a>.</div>`}
   </section>`;
-  const sb = $('#stripeBtn'); if (sb) sb.addEventListener('click', () => { track('begin_checkout', { value: PRICE, currency: 'USD' }); try { localStorage.setItem('cfb2md:paidFrom', back); } catch { /* lands on the link's own tab */ } });
-  const b = $('#buyBtn'); if (b) b.onclick = async () => { track('begin_checkout', { value: PRICE, currency: 'USD' }); b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { toast('Unlocked. Go win.'); setTab(back); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
+  const sb = $('#stripeBtn'); if (sb) sb.addEventListener('click', () => { track('begin_checkout', { value: PRICE, currency: 'USD' }); if (back === 'tourney') tb('checkout'); try { localStorage.setItem('cfb2md:paidFrom', back); } catch { /* lands on the link's own tab */ } });
+  const b = $('#buyBtn'); if (b) b.onclick = async () => { track('begin_checkout', { value: PRICE, currency: 'USD' }); if (back === 'tourney') tb('checkout'); b.disabled = true; $('#buyNote').textContent = 'Opening the store…'; try { const ok = await window.Native.buy(); if (ok) { if (back === 'tourney') tb('paid'); toast('Unlocked. Go win.'); setTab(back); } else $('#buyNote').textContent = 'No purchase made.'; } catch (e) { $('#buyNote').textContent = 'Purchase failed: ' + (e && e.message || e); } b.disabled = false; };
   const r = $('#restoreBtn'); if (r) r.onclick = async () => { $('#buyNote').textContent = 'Checking…'; try { const ok = await window.Native.restore(); $('#buyNote').textContent = ok ? 'Restored.' : 'No previous purchase found for this account.'; if (ok) setTab(back); } catch (e) { $('#buyNote').textContent = 'Restore failed: ' + (e && e.message || e); } };
   const cb = $('#codeBtn'); if (cb) cb.onclick = async () => {
     const v = ($('#codeIn').value || '').trim(); if (!v) return;
@@ -2092,7 +2095,7 @@ function tRecord(n) {
   run.next = null;
   tSim(run, won && !champ ? rd : 3); // the rest of this round; once the run is over, the rest of the bracket
   d.tourney = { rd, won, champ, how, opp: opp.seed };
-  track('tourney_round', { round: TR[rd].key, won: won ? 1 : 0 });
+  track('tourney_round', { round: TR[rd].key, won: won ? 1 : 0 }); tb('p' + rd, won ? { won: 1 } : {});
   if (won && !champ) return;
   run.over = true; run.res = champ ? 'champion' : TR[rd].key;
   T.runs = (T.runs || 0) + 1; if (champ) T.titles = (T.titles || 0) + 1;
@@ -2108,7 +2111,9 @@ function tourneyHTML() {
   const line = t.champ ? `${why} ${tLabel(me)} won the title.` : t.won ? `${why} On to the ${TR[t.rd + 1].name}.` : `${why} ${tLabel(me)} ${R.lost}.`;
   return `<div class="trophy surv ${t.won ? 'alive' : 'dead'}"><div class="who">Tournament · ${esc(R.name)} · vs (${opp.seed}) ${esc(tLabel(opp))}</div><div class="big">${t.champ ? 'CHAMPIONS' : t.won ? 'YOU ADVANCE' : 'ELIMINATED'}</div><div class="end">${esc(line)}</div><button class="cta" id="tNext">${t.won && !t.champ ? `Next: the ${esc(TR[t.rd + 1].name)}` : 'See the bracket'}</button></div>`;
 }
+let tOpened = false;
 function showTourney() {
+  if (!tOpened) { tOpened = true; tb('open'); }
   const cur = tState().cur;
   $('#subline').textContent = 'Tournament · 12-team bracket';
   if (!D.ratings) { app.innerHTML = '<p class="note" style="text-align:center;margin:20px auto">The tournament needs team ratings, and this data file has none yet.</p>'; return; }
@@ -2145,7 +2150,7 @@ function tPicker() {
   $('#trnd').onclick = () => tChoose(all[Math.floor(rand() * all.length)]);
   draw();
 }
-function tChoose(ts) { tPending = { ts, seed: (Date.now() ^ Math.floor(rand() * 4294967296)) >>> 0 }; tView = 'preview'; tPreview(); window.scrollTo(0, 0); }
+function tChoose(ts) { tb('pick', { team: tLabel(ts) }); tPending = { ts, seed: (Date.now() ^ Math.floor(rand() * 4294967296)) >>> 0 }; tView = 'preview'; tPreview(); window.scrollTo(0, 0); }
 // the seeding: the team's numbers, its seed, its first opponent and the whole bracket before a snap is played
 function tPreview() {
   const { ts, seed } = tPending, team = T_(ts.tid), field = tField(ts, seed), me = field.find(t => t.me);
@@ -2174,7 +2179,7 @@ function tStart(ts, seed, field) {
   T.cur = { seed, day: localDay(), field, win: {}, plays: [], next: null, over: false };
   tSim(T.cur, me.seed <= 4 ? 0 : -1);
   saveStore(); tPending = null; tView = 'home'; tRosters();
-  track('tourney_start', { team: T_(ts.tid).school, season: ts.year });
+  track('tourney_start', { team: T_(ts.tid).school, season: ts.year }); tb('start', { team: tLabel(ts) });
   tBracket(); window.scrollTo(0, 0);
 }
 // a run in progress: this round's matchup and drive, then the bracket
@@ -2325,7 +2330,7 @@ function drawTourneyCard(cv, run) {
 function tLockedHTML() {
   return `<div class="tlock"><div class="who">Part of the unlock</div><div class="end">Playing the Tournament comes with the same ${esc(priceLabel())} unlock as Cignetti and Saban mode: unlimited runs, any team-season. Paying never makes a drive easier.</div><button class="cta" id="tUnlock">Unlock the Tournament · ${esc(priceLabel())}</button></div>`;
 }
-function tPaywall() { renderPaywall('tourney', 'tourney'); }
+function tPaywall() { tb('paywall'); renderPaywall('tourney', 'tourney'); }
 
 // ---------- hard-mode libraries (replayable; the daily stays under "Today's drive") ----------
 const hardView = { saban: 'today', cignetti: 'today' }; // 'today' | 'survival' | 'library'
@@ -2485,6 +2490,6 @@ fetch('data.json').then(r => r.json()).then(d => {
   const back = location.search.includes('unlock=');
   let paidFrom = null; if (back) { try { paidFrom = localStorage.getItem('cfb2md:paidFrom'); localStorage.removeItem('cfb2md:paidFrom'); } catch { /* use the link's own tab */ } }
   const startTab = ['saban', 'cignetti', 'tourney'].includes(paidFrom) ? paidFrom : location.hash === '#saban' ? 'saban' : location.hash === '#cignetti' ? 'cignetti' : location.hash === '#survival' ? 'survival' : location.hash === '#tournament' ? 'tourney' : location.hash === '#daily' ? 'daily' : location.hash === '#coaches' ? 'coaches' : 'home';
-  if (back) claimFromUrl().then(() => setTab(startTab)); else setTab(startTab);
+  if (back) claimFromUrl().then(() => { if (paidFrom === 'tourney' && premiumUnlocked()) tb('paid'); setTab(startTab); }); else setTab(startTab);
   if (!seen && !back) $('#helpDlg').showModal();
 }).catch(() => { app.innerHTML = '<p class="note">Could not load the drive data. Reload the page to try again.</p>'; });
