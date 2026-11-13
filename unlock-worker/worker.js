@@ -9,6 +9,7 @@
  *   /claim?session_id=cs_…     -> { ok, code }        after a payment
  *   /verify?code=…             -> { ok, code }        a code from another device
  *   /restore?email=…           -> { ok, code } | { ok:false, reason:'not_found' }
+ *   /t?ev=…&token=…[&team=…]   -> { ok }               a Tournament step, tallied by day (see T_EVENTS)
  *
  * Secrets (wrangler secret put …):  STRIPE_SECRET (a restricted key with Checkout Sessions: read), UNLOCK_SECRET (any
  * long random string). Vars: ALLOWED_ORIGIN (https://ncaa2mindrill.com), PRICE_MIN (99, cents).
@@ -44,6 +45,23 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS lb_bins (day INTEGER, mode TEXT, b INTEGER, c INTEGER, PRIMARY KEY (day, mode, b))',
   'CREATE TABLE IF NOT EXISTS lb_done (day INTEGER, mode TEXT, PRIMARY KEY (day, mode))',                  // lb_bins built from results
 ];
+// ---- Tournament tallies: each step of the funnel counted a UTC day, with how many browsers took it that day (t_seen
+// remembers who already counted), and which team-seasons were picked and started. Small tables, read whole by /stats.
+const T_SCHEMA = [
+  'CREATE TABLE IF NOT EXISTS t_days (day TEXT, ev TEXT, c INTEGER, u INTEGER, PRIMARY KEY (day, ev))',
+  'CREATE TABLE IF NOT EXISTS t_seen (day TEXT, ev TEXT, token TEXT, PRIMARY KEY (day, ev, token))',
+  'CREATE TABLE IF NOT EXISTS t_teams (day TEXT, ev TEXT, team TEXT, c INTEGER, PRIMARY KEY (day, ev, team))',
+];
+// open: the Tournament tab; pick: a team-season's seeding; paywall: the unlock screen from the Tournament;
+// checkout: Stripe opened from it; paid: back from Stripe unlocked; start: a run; p0-p3: a round played (R1, QF, SF,
+// title), w0-w3: won (w3 is a title)
+const T_EVENTS = new Set(['open', 'pick', 'paywall', 'checkout', 'paid', 'start', 'p0', 'p1', 'p2', 'p3', 'w0', 'w1', 'w2', 'w3']);
+let tReady = false;
+async function tEnsure(env) {
+  if (tReady) return;
+  await env.DB.batch(T_SCHEMA.map(q => env.DB.prepare(q)));
+  tReady = true;
+}
 let ready = false;
 // once per isolate: make the tables, and the first time ever, fill the visit tallies from the visits already recorded
 async function ensure(env) {
@@ -167,6 +185,24 @@ export default {
         await env.DB.batch(tally);
         return json({ ok: true });
       }
+      if (url.pathname === '/t' && env.DB) {
+        const ev = url.searchParams.get('ev') || '', token = (url.searchParams.get('token') || '').slice(0, 40);
+        const team = (url.searchParams.get('team') || '').trim();
+        if (!T_EVENTS.has(ev) || token.length < 8) return json({ ok: false, reason: 'bad_input' }, 400);
+        await tEnsure(env);
+        const day = new Date().toISOString().slice(0, 10);
+        const evs = [ev]; if (/^p[0-3]$/.test(ev) && url.searchParams.get('won') === '1') evs.push('w' + ev[1]);
+        const ops = [];
+        for (const e of evs) {
+          const fresh = await env.DB.prepare('INSERT OR IGNORE INTO t_seen (day, ev, token) VALUES (?1, ?2, ?3)').bind(day, e, token).run();
+          ops.push(env.DB.prepare('INSERT INTO t_days (day, ev, c, u) VALUES (?1, ?2, 1, ?3) ON CONFLICT (day, ev) DO UPDATE SET c = c + 1, u = u + ?3').bind(day, e, fresh.meta && fresh.meta.changes ? 1 : 0));
+        }
+        // "2025 Miami (OH)": a season and a school name, nothing else
+        if ((ev === 'pick' || ev === 'start') && /^20\d\d [\p{L}0-9 .&()'-]{2,40}$/u.test(team))
+          ops.push(env.DB.prepare('INSERT INTO t_teams (day, ev, team, c) VALUES (?1, ?2, ?3, 1) ON CONFLICT (day, ev, team) DO UPDATE SET c = c + 1').bind(day, ev, team));
+        await env.DB.batch(ops);
+        return json({ ok: true });
+      }
       if (url.pathname === '/unlocked' && env.DB) {
         const code = (url.searchParams.get('code') || '').slice(0, 80), src = (url.searchParams.get('src') || 'web').slice(0, 12);
         const from = (url.searchParams.get('from') || 'direct').replace(/[^\w./-]/g, '').slice(0, 48) || 'direct';
@@ -200,7 +236,14 @@ export default {
           const s = await stripe(env, '/checkout/sessions?limit=100&status=complete');
           stripe_paid = (s.data || []).filter(x => x.payment_status === 'paid').length; if (s.has_more) stripe_paid = stripe_paid + '+';
         } catch (e) { stripe_error = String(e && e.message || e); }
-        const out = { ok: true, today, asOf: Date.now(), visits, byDay, unlocks, plays, stripe_paid, stripe_error, bySrc, unlocksBySrc };
+        // the Tournament funnel: each step today, over 7 days and all time (c: times, u: browsers, counted once a day)
+        await tEnsure(env);
+        const tsum = async (where, ...a) => Object.fromEntries((await all(`SELECT ev, SUM(c) AS c, SUM(u) AS u FROM t_days ${where} GROUP BY ev`, ...a)).map(r => [r.ev, { c: r.c, u: r.u }]));
+        const tourney = {
+          today: await tsum('WHERE day = ?1', today), week: await tsum('WHERE day >= ?1', week), all: await tsum(''),
+          teams: await all("SELECT team, SUM(CASE WHEN ev = 'pick' THEN c ELSE 0 END) AS picks, SUM(CASE WHEN ev = 'start' THEN c ELSE 0 END) AS starts FROM t_teams WHERE day >= ?1 GROUP BY team ORDER BY picks DESC, starts DESC LIMIT 12", week),
+        };
+        const out = { ok: true, today, asOf: Date.now(), visits, byDay, unlocks, plays, stripe_paid, stripe_error, bySrc, unlocksBySrc, tourney };
         await env.DB.prepare("INSERT INTO kv (k, v, ts) VALUES ('stats', ?1, ?2) ON CONFLICT (k) DO UPDATE SET v = excluded.v, ts = excluded.ts").bind(JSON.stringify(out), out.asOf).run();
         return json(out);
       }
