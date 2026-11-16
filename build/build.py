@@ -857,6 +857,9 @@ for r in cand.itertuples():
     if ext:
         EXT.add(len(scen) - 1)
     if FEAT:
+        # the day it was played in Eastern time, for the site's "From Saturday" line (date is the UTC day of kickoff,
+        # and a night game runs into the next one)
+        scen[-1]['day'] = str(pd.to_datetime(sres.game_date, utc=True).tz_convert('America/New_York').date())
         # the state the coach's win chance is measured at, so the merge can re-score it with the live model
         scen[-1]['_cwp_state'] = ([q_s, float(q.secs), float(q.yards_to_goal), float(q.down), float(q.distance), q_to, q_dto, elo_v, q.pos_team == r.pos_team]
                                   if len(nxt) else None)

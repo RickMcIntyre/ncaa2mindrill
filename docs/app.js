@@ -529,12 +529,18 @@ function dailyScenario() {
   const i = todayIndex(), pinned = D.featured && D.featured[localDay()];
   return { no: i + 1, sc: pinned != null && D.scen[pinned] ? D.scen[pinned] : pick(D.free, i) };
 }
+// The day a featured game was played, Eastern time. `date` is the UTC day of kickoff, so a night game lands on the next
+// day. New drives carry the Eastern day as `day`; these came out before that, a night kickoff dated a day late.
+const FEAT_DAY = { 1004: '2026-10-31', 1009: '2026-11-07', 1011: '2026-11-06', 1015: '2026-11-06', 1016: '2026-11-14',
+  1017: '2026-11-14', 1020: '2026-11-12', 1021: '2026-11-14' };
+const gameDay = sc => sc.day || FEAT_DAY[sc.id] || sc.date;
 // "From Saturday": a hand-picked drive from the last week reads as news, not history
 function freshLine(sc) {
-  if (!sc.feat || !sc.date) return '';
-  const days = Math.round((Date.parse(localDay()) - Date.parse(sc.date)) / 864e5);
+  const day = sc.feat && gameDay(sc);
+  if (!day) return '';
+  const days = Math.round((Date.parse(localDay()) - Date.parse(day)) / 864e5);
   if (days < 0 || days > 9) return '';
-  const wd = new Date(sc.date + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'long', timeZone: 'UTC' });
+  const wd = new Date(day + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'long', timeZone: 'UTC' });
   return days <= 1 ? 'From yesterday' : days <= 6 ? `From ${wd}` : `From last ${wd}`;
 }
 // The hard modes are sorted by the scoreboard. Cignetti is two scores down, 9-11 points: a touchdown, an onside
